@@ -41,11 +41,12 @@ body {
   position: absolute;
   display: flex;
   overflow: hidden;
+  contain: paint; /* 인쇄 시에도 자식 요소가 경계를 벗어나지 않도록 강제 */
   line-height: 1.04;
   color: #000;
-  font-family: "Malgun Gothic", "맑은 고딕", sans-serif;
+  font-family: "맑은 고딕", "Malgun Gothic", sans-serif;
 }
-.ov-text-inner { position: relative; z-index: 2; }
+.ov-text-inner { position: relative; z-index: 2; min-width: 0; overflow: hidden; }
 .ov-cover {
   position: absolute; inset: 1px;
   background: #fff; z-index: 1;
@@ -55,6 +56,8 @@ body {
   position: absolute;
   transform: translate(-50%, -50%);
   background: #000;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
   z-index: 3;
 }
 .ov-circle {
@@ -62,6 +65,8 @@ body {
   transform: translate(-50%, -50%);
   background: #000;
   border-radius: 50%;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
   z-index: 3;
 }
 .ov-oval {

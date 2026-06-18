@@ -76,10 +76,10 @@ function deptVal(ref: string, value: string): TextItem {
   const b = cell(ref);
   return txt(ref, value, { x: b.x + b.w * 0.28, w: b.w * 0.7, align: "left", valign: "middle", fontPt: 6.5 });
 }
-// 인쇄된 "성명 :" 뒤, "(인)" 앞 빈칸에 이름 기입
+// 인쇄된 "성명 :" 뒤, "(인)" 앞 빈칸에 이름 기입 (폭 0.18로 (인) 겹침 방지)
 function nameVal(ref: string, name: string): TextItem {
   const b = cell(ref);
-  return txt(ref, name, { x: b.x + b.w * 0.26, w: b.w * 0.24, align: "center", valign: "middle", fontPt: 7.5 });
+  return txt(ref, name, { x: b.x + b.w * 0.26, w: b.w * 0.18, align: "center", valign: "middle", fontPt: 6.5 });
 }
 
 function squareMark(ref: string): MarkItem | null {
@@ -275,14 +275,15 @@ export function buildOverlays(data: PermitData): Overlay[] {
 
   data.jsa.slice(0, 6).forEach((r, i) => {
     const rw = JSA_ROWS[i];
-    if (r.step) push(boxText(cell(`A${rw}`), r.step, { align: "center", fontPt: 6.5 }));
-    if (r.hazard) push(boxText(range(`B${rw}`, `D${rw}`), r.hazard, { fontPt: 6 }));
-    if (r.frequency !== "") push(boxText(cell(`E${rw}`), String(r.frequency), { align: "center", valign: "middle", fontPt: 6.5 }));
-    if (r.severity !== "") push(boxText(cell(`F${rw}`), String(r.severity), { align: "center", valign: "middle", fontPt: 6.5 }));
+    // 단계 열은 행 번호만 표시 (텍스트 입력 불필요)
+    push(boxText(cell(`A${rw}`), String(i + 1), { align: "center", valign: "middle", fontPt: 5.5 }));
+    if (r.hazard) push(boxText(range(`B${rw}`, `D${rw}`), r.hazard, { fontPt: 5 }));
+    if (r.frequency !== "") push(boxText(cell(`E${rw}`), String(r.frequency), { align: "center", valign: "middle", fontPt: 5.5 }));
+    if (r.severity !== "") push(boxText(cell(`F${rw}`), String(r.severity), { align: "center", valign: "middle", fontPt: 5.5 }));
     if (r.frequency !== "" && r.severity !== "")
-      push(boxText(cell(`G${rw}`), riskGrade(Number(r.frequency), Number(r.severity)), { align: "center", valign: "middle", fontPt: 6.5 }));
-    if (r.current) push(boxText(range(`H${rw}`, `K${rw}`), r.current, { fontPt: 6 }));
-    if (r.reduction) push(boxText(cell(`L${rw}`), r.reduction, { fontPt: 6 }));
+      push(boxText(cell(`G${rw}`), riskGrade(Number(r.frequency), Number(r.severity)), { align: "center", valign: "middle", fontPt: 5.5 }));
+    if (r.current) push(boxText(range(`H${rw}`, `K${rw}`), r.current, { fontPt: 5 }));
+    if (r.reduction) push(boxText(cell(`L${rw}`), r.reduction, { fontPt: 5 }));
   });
 
   // 교육 서약 - 참여자 성명 (Q138부터 3열 x 6행: Q/V/AA, rows 138,140,142,144,146,148)
@@ -303,7 +304,10 @@ export function buildOverlays(data: PermitData): Overlay[] {
   // 신청 (업체) — 인쇄된 "소속 :"/"성명 :" 뒤에 값만 기입
   if (data.applicantDept) push(deptVal("T167", data.applicantDept));
   if (data.applicantName) push(nameVal("X167", data.applicantName));
-  if (data.applicantDate) push(txt("AB167", fmtKDate(data.applicantDate), { fontPt: 7 }));
+  if (data.applicantDate) {
+    const abd = cell("AB167");
+    push(txt("AB167", fmtKDate(data.applicantDate), { x: abd.x - abd.w * 0.18, w: abd.w * 1.18, fontPt: 7 }));
+  }
 
   // ⑰ 작업승인 (관리자)
   (["issue", "review", "approve", "complete"] as const).forEach((k) => {
