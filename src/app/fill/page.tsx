@@ -23,7 +23,7 @@ const STATUS_LABEL: Record<PermitStatus, { text: string; color: string }> = {
 function FillInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const cloudId = searchParams.get("id");
   const { data, setData, update, toggleIn, reset, loaded } = usePermit({ disableLocalStorage: !!cloudId });
 
@@ -121,6 +121,7 @@ function FillInner() {
             {!isGuest && (
               <button onClick={() => router.push("/admin")}>목록</button>
             )}
+            <button onClick={() => { logout(); router.replace("/login"); }}>로그아웃</button>
           </>
         ) : (
           <button onClick={() => router.push("/login")}>로그인</button>
