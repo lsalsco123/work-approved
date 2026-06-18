@@ -33,6 +33,7 @@ export interface PermitData {
 
   // 공정 (복수선택) — 빨간 동그라미
   processes: string[];
+  processEtc: string;
 
   // ① 안전보호구
   gear: string[];
@@ -104,7 +105,7 @@ export function emptyPermit(): PermitData {
   return {
     company: "", representative: "", supervisor: "", workerCount: "",
     emergencyContact: "", workDate: "", startTime: "", endTime: "", workContent: "",
-    workTypes: [], workTypeEtc: "", processes: [], gear: [], gearEtc: "",
+    workTypes: [], workTypeEtc: "", processes: [], processEtc: "", gear: [], gearEtc: "",
     general: [], hot: [], hotFireWatcher: "", hotFireManager: "",
     confined: [], confinedWatcher: "", electrical: [], electricalCutoffTime: "", electricalCutoffPerson: "",
     elevated: [], excavation: [], excavationBuriedChecker: "",

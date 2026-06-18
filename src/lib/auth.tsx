@@ -3,10 +3,9 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
 export type UserRole = "guest" | "admin";
@@ -22,7 +21,6 @@ interface AuthCtx {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, company: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -33,7 +31,7 @@ const toDisplayId = (fbEmail: string) =>
 
 const Ctx = createContext<AuthCtx>({
   user: null, loading: true,
-  login: async () => {}, register: async () => {}, logout: async () => {},
+  login: async () => {}, logout: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -41,7 +39,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Firebase 미설정(env vars 없음) 또는 auth가 초기화 안된 경우 비로그인으로 처리
     if (typeof (auth as any).onAuthStateChanged !== "function") {
       setLoading(false);
       return;
@@ -77,17 +74,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await signInWithEmailAndPassword(auth, toFbEmail(email), password);
   };
 
-  const register = async (email: string, password: string, company: string) => {
-    const fbEmail = toFbEmail(email);
-    const cred = await createUserWithEmailAndPassword(auth, fbEmail, password);
-    await setDoc(doc(db, "users", cred.user.uid), {
-      email: toDisplayId(fbEmail), role: "guest", company, createdAt: new Date().toISOString(),
-    });
-  };
-
   const logout = async () => signOut(auth);
 
-  return <Ctx.Provider value={{ user, loading, login, register, logout }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, loading, login, logout }}>{children}</Ctx.Provider>;
 }
 
 export function useAuth() {

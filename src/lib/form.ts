@@ -175,6 +175,7 @@ export const PROCESSES: { name: string; tl: string; br: string }[] = [
   { name: "드로스보관장", tl: "K30", br: "L33" },
   { name: "옥외저장소", tl: "K34", br: "L36" },
   { name: "스크랩보관장소", tl: "K37", br: "L42" },
+  { name: "기타", tl: "", br: "" },
 ];
 
 // JSA 6개 행 그룹의 시작 행 (각 그룹 셀: 단계A, 위험요인B, 빈도E, 치명도F, 등급G, 현재H, 감소L)
@@ -226,7 +227,7 @@ export function buildOverlays(data: PermitData): Overlay[] {
   // 공정 빨간 동그라미
   data.processes.forEach((p) => {
     const def = PROCESSES.find((x) => x.name === p);
-    if (def) { const b = range(def.tl, def.br); out.push({ kind: "oval", ...b }); }
+    if (def && def.tl && def.br) { const b = range(def.tl, def.br); out.push({ kind: "oval", ...b }); }
   });
 
   // ① 안전보호구
