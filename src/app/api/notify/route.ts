@@ -3,7 +3,8 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const NOTIFY_TO = process.env.NOTIFY_EMAIL ?? "sehyun.park@alsco.co.kr";
-const FROM = process.env.RESEND_FROM ?? "작업허가서 시스템 <factory_system@alsco.co.kr>";
+// alsco.co.kr 도메인이 Resend에서 인증되지 않은 경우 onboarding@resend.dev 사용
+const FROM = process.env.RESEND_FROM ?? "작업허가서 시스템 <onboarding@resend.dev>";
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   general: "일반작업", hot: "화기작업", confined: "밀폐공간작업",

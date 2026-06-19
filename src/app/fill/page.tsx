@@ -75,20 +75,26 @@ function FillInner() {
     try {
       await submitPermit(id);
       setPermitStatus("submitted");
-      fetch("/api/notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company: data.company,
-          workContent: data.workContent,
-          workDate: data.workDate,
-          startTime: data.startTime,
-          endTime: data.endTime,
-          supervisor: data.supervisor,
-          permitId: id,
-          permitData: data,
-        }),
-      }).catch(() => {});
+      try {
+        const nr = await fetch("/api/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            company: data.company,
+            workContent: data.workContent,
+            workDate: data.workDate,
+            startTime: data.startTime,
+            endTime: data.endTime,
+            supervisor: data.supervisor,
+            permitId: id,
+            permitData: data,
+          }),
+        });
+        const nj = await nr.json();
+        if (!nj.ok) console.error("이메일 전송 실패:", nj.error);
+      } catch (ne) {
+        console.error("이메일 API 호출 실패:", ne);
+      }
     } catch (e) {
       alert("제출 실패: " + e);
     } finally {
