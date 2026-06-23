@@ -12,6 +12,67 @@ const WORK_TYPE_LABELS: Record<string, string> = {
   heavy: "중장비취급작업", radiation: "방사능작업", etc: "기타",
 };
 
+// Firebase ID 토큰 검증: Identity Toolkit REST 로 프로젝트 소속/유효성 확인
+// (firebase-admin·서비스계정 키 없이 NEXT_PUBLIC_FB_API_KEY 만으로 검증)
+// 반환: 유효하면 호출자 uid(localId), 무효/예외면 null
+async function verifyIdToken(idToken: string): Promise<string | null> {
+  const apiKey = process.env.NEXT_PUBLIC_FB_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const r = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      }
+    );
+    if (!r.ok) return null;
+    const j = await r.json();
+    const uid = Array.isArray(j.users) && j.users.length > 0 ? j.users[0]?.localId : null;
+    return typeof uid === "string" && uid ? uid : null;
+  } catch {
+    return null;
+  }
+}
+
+const PROJECT_ID = process.env.NEXT_PUBLIC_FB_PROJECT_ID;
+
+// 소유권/권한 검증: 서비스계정 없이 호출자의 idToken 으로 Firestore REST 를 직접 호출한다.
+// Firestore 보안 rules 가 호출자 권한을 자연히 강제하므로(읽기 거부=권한없음),
+// 200 응답 여부 + createdBy/role 필드만으로 "소유자 또는 admin" 인지 판정할 수 있다.
+// 반환: 발송 허용 시 true, 그 외(비소유·비admin·문서없음·네트워크예외) false.
+async function isOwnerOrAdmin(idToken: string, uid: string, permitId: string): Promise<boolean> {
+  if (!PROJECT_ID) return false;
+  const base = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+  try {
+    // 1) 해당 permit 문서를 호출자 토큰으로 조회 → rules 가 권한을 강제
+    const permitRes = await fetch(`${base}/permits/${encodeURIComponent(permitId)}`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    // 200 이 아니면 읽기 거부(비소유/비admin) 또는 문서 없음 → 발송 거부
+    if (permitRes.ok) {
+      const doc = await permitRes.json();
+      const createdBy = doc?.fields?.createdBy?.stringValue;
+      // 소유자(createdBy === 호출자 uid)면 허용
+      if (typeof createdBy === "string" && createdBy === uid) return true;
+    }
+    // 2) 소유자가 아니거나 permit 읽기에 실패해도, 호출자가 admin 이면 허용
+    //    users/{uid} 문서를 같은 방식으로 읽어 role 확인
+    const userRes = await fetch(`${base}/users/${encodeURIComponent(uid)}`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    if (userRes.ok) {
+      const userDoc = await userRes.json();
+      if (userDoc?.fields?.role?.stringValue === "admin") return true;
+    }
+    return false;
+  } catch {
+    // 네트워크 예외 등은 안전하게 거부
+    return false;
+  }
+}
+
 function esc(s: unknown): string {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -179,8 +240,27 @@ body { font-family: '맑은 고딕','Malgun Gothic',Arial,sans-serif; font-size:
 
 export async function POST(req: NextRequest) {
   try {
+    // 인증: 로그인한 Firebase 사용자만 호출 가능 (익명 메일 발송 남용 차단)
+    const authz = req.headers.get("authorization") ?? "";
+    const idToken = authz.startsWith("Bearer ") ? authz.slice(7).trim() : "";
+    const uid = idToken ? await verifyIdToken(idToken) : null;
+    if (!uid) {
+      // 토큰 없음/무효 → 401 (기존 동작 유지)
+      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { company, workContent, workDate, startTime, endTime, supervisor, permitId, permitData } = body;
+
+    // 소유권 검증을 위해 permitId 필수 (없으면 검증 불가 → 발송 거부)
+    if (!permitId || typeof permitId !== "string") {
+      return NextResponse.json({ ok: false, error: "permitId required" }, { status: 400 });
+    }
+
+    // 인가: 호출자가 해당 permit 의 소유자이거나 admin 일 때만 발송 허용
+    if (!(await isOwnerOrAdmin(idToken, uid, permitId))) {
+      return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+    }
 
     const subject = `[작업허가서 제출] ${company || "업체명 미입력"} — ${workContent?.slice(0, 40) || "작업내용 없음"}`;
 

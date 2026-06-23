@@ -9,18 +9,40 @@ service cloud.firestore {
 
     // 사용자 프로필
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-      allow read: if isAdmin();
+      function isSelf() { return request.auth != null && request.auth.uid == uid; }
+
+      allow read: if isSelf() || isAdmin();
+      // 본인 문서 생성은 가능하되 role 은 반드시 guest (관리자 권한 자가 승격 차단)
+      allow create: if isSelf() && request.resource.data.role == 'guest';
+      // 수정 시 role 변경 금지 (권한 상승 방지). admin 승격은 콘솔에서만.
+      allow update: if isSelf() && request.resource.data.role == resource.data.role;
+      allow delete: if false;
     }
 
     // 작업허가서
     match /permits/{id} {
-      allow read, write: if isAdmin();
-      allow read: if request.auth != null && resource.data.createdBy == request.auth.uid;
-      allow create: if request.auth != null;
-      allow update: if request.auth != null
-        && resource.data.createdBy == request.auth.uid
-        && resource.data.status == 'draft';
+      function isOwner() {
+        return request.auth != null && resource.data.createdBy == request.auth.uid;
+      }
+
+      allow read: if isAdmin() || isOwner();
+
+      // 생성: 본인 소유 + 최초 상태는 draft 로 고정
+      allow create: if request.auth != null
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'draft';
+
+      // 수정:
+      //  - 관리자: 전체 허용 (승인/반려/완료 등)
+      //  - 작성자 본인: draft/rejected 상태일 때만, createdBy 변경 불가,
+      //    상태는 draft/submitted 로만 이동 가능 (approved/completed 자가 설정 차단)
+      allow update: if isAdmin()
+        || (isOwner()
+            && resource.data.status in ['draft', 'rejected']
+            && request.resource.data.createdBy == resource.data.createdBy
+            && request.resource.data.status in ['draft', 'submitted']);
+
+      allow delete: if isAdmin();
     }
   }
 }

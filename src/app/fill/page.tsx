@@ -11,6 +11,7 @@ import {
 } from "@/lib/form";
 import { sampleSinwoo } from "@/lib/samples";
 import { savePermit, submitPermit, getPermit, PermitStatus } from "@/lib/permits";
+import { auth } from "@/lib/firebase";
 
 const STATUS_LABEL: Record<PermitStatus, { text: string; color: string }> = {
   draft:     { text: "임시저장", color: "#94a3b8" },
@@ -30,6 +31,7 @@ function FillInner() {
   const [showPreview, setShowPreview] = useState(true);
   const [permitId, setPermitId] = useState<string | null>(cloudId);
   const [permitStatus, setPermitStatus] = useState<PermitStatus | null>(null);
+  const [adminNote, setAdminNote] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [cloudLoaded, setCloudLoaded] = useState(!cloudId);
 
@@ -39,6 +41,7 @@ function FillInner() {
       if (rec) {
         setData(rec.data);
         setPermitStatus(rec.status);
+        setAdminNote(rec.adminNote ?? "");
       }
       setCloudLoaded(true);
     });
@@ -46,7 +49,9 @@ function FillInner() {
 
   if (!loaded || !cloudLoaded) return <div style={{ padding: 24 }}>불러오는 중…</div>;
 
-  const isReadOnly = !!permitStatus && permitStatus !== "draft";
+  // draft / rejected 상태에서만 편집 가능 (반려건은 수정 후 재제출 허용)
+  const isReadOnly = !!permitStatus && permitStatus !== "draft" && permitStatus !== "rejected";
+  const canSubmit = !permitStatus || permitStatus === "draft" || permitStatus === "rejected";
 
   const handleSave = async (): Promise<string | null> => {
     if (!user) { alert("로그인 후 이용 가능합니다."); return null; }
@@ -65,8 +70,23 @@ function FillInner() {
     }
   };
 
+  const validate = (): string[] => {
+    const miss: string[] = [];
+    if (!data.company.trim()) miss.push("업체명(부서명)");
+    if (!data.supervisor.trim()) miss.push("작업감독자");
+    if (!data.workDate) miss.push("작업일자");
+    if (!data.workContent.trim()) miss.push("작업내용");
+    if (data.privacyConsent !== "agree") miss.push("개인정보 수집·이용 동의(동의 함)");
+    return miss;
+  };
+
   const handleSubmit = async () => {
     if (!user) { alert("로그인 후 이용 가능합니다."); return; }
+    const missing = validate();
+    if (missing.length) {
+      alert("다음 필수 항목을 확인해주세요:\n\n· " + missing.join("\n· "));
+      return;
+    }
     let id = permitId;
     if (!id) id = await handleSave();
     if (!id) return;
@@ -76,9 +96,13 @@ function FillInner() {
       await submitPermit(id);
       setPermitStatus("submitted");
       try {
+        const token = await auth.currentUser?.getIdToken();
         const nr = await fetch("/api/notify", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({
             company: data.company,
             workContent: data.workContent,
@@ -90,10 +114,22 @@ function FillInner() {
             permitData: data,
           }),
         });
-        const nj = await nr.json();
-        if (!nj.ok) console.error("이메일 전송 실패:", nj.error);
+        // 제출 자체는 성공(submitted 유지). 알림 메일 발송이 실패하면
+        // 사용자에게 비차단 안내만 띄운다(흐름은 깨지 않음).
+        let notifyOk = nr.ok;
+        try {
+          const nj = await nr.json();
+          notifyOk = notifyOk && nj.ok !== false;
+          if (!notifyOk) console.error("이메일 전송 실패:", nj.error);
+        } catch {
+          notifyOk = false;
+        }
+        if (!notifyOk) {
+          alert("제출은 완료되었으나 관리자 알림 메일 발송에 실패했습니다. 관리자에게 직접 알려주세요.");
+        }
       } catch (ne) {
         console.error("이메일 API 호출 실패:", ne);
+        alert("제출은 완료되었으나 관리자 알림 메일 발송에 실패했습니다. 관리자에게 직접 알려주세요.");
       }
     } catch (e) {
       alert("제출 실패: " + e);
@@ -139,13 +175,27 @@ function FillInner() {
         {user && !isReadOnly && isGuest && (
           <>
             <button onClick={handleSave} disabled={saving}>{saving ? "저장 중…" : "임시저장"}</button>
-            {(!permitStatus || permitStatus === "draft") && (
-              <button onClick={handleSubmit} disabled={saving} className="primary">제출</button>
+            {canSubmit && (
+              <button onClick={handleSubmit} disabled={saving} className="primary">
+                {permitStatus === "rejected" ? "재제출" : "제출"}
+              </button>
             )}
           </>
         )}
         <button onClick={() => window.print()} className="primary">인쇄 / PDF</button>
       </header>
+
+      {permitStatus === "rejected" && (
+        <div className="no-print" style={{ background: "#fef2f2", borderBottom: "1px solid #fecaca", padding: "12px 20px", color: "#991b1b", fontSize: 13 }}>
+          <strong>반려됨</strong> — 내용을 수정한 뒤 다시 제출하실 수 있습니다.
+          {adminNote && <div style={{ marginTop: 4, color: "#7f1d1d" }}>사유: {adminNote}</div>}
+        </div>
+      )}
+      {permitStatus === "approved" && (
+        <div className="no-print" style={{ background: "#f0fdf4", borderBottom: "1px solid #bbf7d0", padding: "12px 20px", color: "#166534", fontSize: 13 }}>
+          <strong>승인 완료</strong> — 인쇄/PDF로 출력하여 현장에 비치하세요.
+        </div>
+      )}
 
       <div className="body">
         <div className="formcol no-print">

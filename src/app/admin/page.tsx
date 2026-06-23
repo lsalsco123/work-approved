@@ -2,7 +2,10 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { listAllPermits, PermitRecord, PermitStatus } from "@/lib/permits";
+import {
+  listAllPermits, approvePermit, rejectPermit, completePermit,
+  PermitRecord, PermitStatus,
+} from "@/lib/permits";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
   draft: "임시저장",
@@ -47,6 +50,35 @@ export default function AdminPage() {
   };
 
   useEffect(() => { if (user?.role === "admin") fetchAll(); }, [user]);
+
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const doApprove = async (p: PermitRecord) => {
+    if (!user) return;
+    if (!window.confirm(`[${p.company || p.createdByEmail}] 허가서를 승인하시겠습니까?`)) return;
+    setBusyId(p.id);
+    try { await approvePermit(p.id, user.email); await fetchAll(); }
+    catch (e) { alert("승인 실패: " + e); }
+    finally { setBusyId(null); }
+  };
+
+  const doReject = async (p: PermitRecord) => {
+    if (!user) return;
+    const note = window.prompt("반려 사유를 입력하세요 (작성자에게 표시됩니다):", "");
+    if (note === null) return;
+    setBusyId(p.id);
+    try { await rejectPermit(p.id, note.trim()); await fetchAll(); }
+    catch (e) { alert("반려 실패: " + e); }
+    finally { setBusyId(null); }
+  };
+
+  const doComplete = async (p: PermitRecord) => {
+    if (!window.confirm(`[${p.company || p.createdByEmail}] 작업완료 처리하시겠습니까?`)) return;
+    setBusyId(p.id);
+    try { await completePermit(p.id); await fetchAll(); }
+    catch (e) { alert("완료 처리 실패: " + e); }
+    finally { setBusyId(null); }
+  };
 
   const count = (s: PermitStatus) => permits.filter((p) => p.status === s).length;
 
@@ -107,6 +139,7 @@ export default function AdminPage() {
                   <th style={{ width: 90 }}>상태</th>
                   <th style={{ width: 110 }}>제출일시</th>
                   <th style={{ width: 100 }}>보기</th>
+                  <th style={{ width: 150 }}>처리</th>
                 </tr>
               </thead>
               <tbody>
@@ -124,6 +157,20 @@ export default function AdminPage() {
                     <td style={{ fontSize: 12 }}>{tsToStr(p.submittedAt)}</td>
                     <td>
                       <a className="mini" href={`/fill?id=${p.id}`} target="_blank" rel="noreferrer">보기/출력</a>
+                    </td>
+                    <td>
+                      {busyId === p.id ? (
+                        <span style={{ fontSize: 12, color: "#94a3b8" }}>처리 중…</span>
+                      ) : p.status === "submitted" ? (
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button className="mini" style={{ background: "#16a34a", color: "#fff" }} onClick={() => doApprove(p)}>승인</button>
+                          <button className="mini" style={{ background: "#ef4444", color: "#fff" }} onClick={() => doReject(p)}>반려</button>
+                        </div>
+                      ) : p.status === "approved" ? (
+                        <button className="mini" onClick={() => doComplete(p)}>작업완료</button>
+                      ) : (
+                        <span style={{ fontSize: 12, color: "#cbd5e1" }}>-</span>
+                      )}
                     </td>
                   </tr>
                 ))}

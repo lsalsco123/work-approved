@@ -1,6 +1,6 @@
 import {
   collection, doc, addDoc, updateDoc, getDoc, getDocs,
-  query, where, orderBy, serverTimestamp, Timestamp,
+  query, where, orderBy, limit, serverTimestamp, Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { PermitData } from "./types";
@@ -72,8 +72,8 @@ export async function listMyPermits(uid: string): Promise<PermitRecord[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PermitRecord));
 }
 
-export async function listAllPermits(): Promise<PermitRecord[]> {
-  const q = query(collection(db, COL), orderBy("createdAt", "desc"));
+export async function listAllPermits(max = 500): Promise<PermitRecord[]> {
+  const q = query(collection(db, COL), orderBy("createdAt", "desc"), limit(max));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PermitRecord));
 }
