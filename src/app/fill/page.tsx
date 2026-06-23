@@ -132,6 +132,9 @@ function FillInner() {
         ) : (
           <button onClick={() => router.push("/login")}>로그인</button>
         )}
+        {isReadOnly && (
+          <button onClick={() => router.push("/fill")}>새 허가서 작성</button>
+        )}
         <button onClick={() => setShowPreview((s) => !s)}>{showPreview ? "미리보기 숨기기" : "미리보기"}</button>
         {user && !isReadOnly && isGuest && (
           <>
