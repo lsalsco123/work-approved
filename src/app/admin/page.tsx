@@ -36,6 +36,7 @@ export default function AdminPage() {
   const router = useRouter();
   const [permits, setPermits] = useState<PermitRecord[]>([]);
   const [fetching, setFetching] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [filter, setFilter] = useState<"all" | PermitStatus>("submitted");
   const [search, setSearch] = useState("");
 
@@ -45,7 +46,9 @@ export default function AdminPage() {
 
   const fetchAll = async () => {
     setFetching(true);
-    try { setPermits(await listAllPermits()); } catch {}
+    setLoadError(false);
+    try { setPermits(await listAllPermits()); }
+    catch (e) { console.error("목록 조회 실패:", e); setLoadError(true); }
     setFetching(false);
   };
 
@@ -125,6 +128,13 @@ export default function AdminPage() {
 
         {fetching ? (
           <div style={{ padding: 32, textAlign: "center", color: "#94a3b8" }}>불러오는 중…</div>
+        ) : loadError ? (
+          <div style={{ padding: 32, textAlign: "center", color: "#b91c1c" }}>
+            목록을 불러오지 못했습니다.
+            <div style={{ marginTop: 10 }}>
+              <button className="mini" onClick={fetchAll}>다시 시도</button>
+            </div>
+          </div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: 32, textAlign: "center", color: "#94a3b8" }}>해당 항목이 없습니다.</div>
         ) : (

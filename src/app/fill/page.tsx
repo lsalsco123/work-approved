@@ -34,20 +34,53 @@ function FillInner() {
   const [adminNote, setAdminNote] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [cloudLoaded, setCloudLoaded] = useState(!cloudId);
+  // 클라우드 허가서 로드 결과: null=정상, "notfound"=문서 없음/권한 없음, "error"=조회 실패
+  const [loadError, setLoadError] = useState<null | "notfound" | "error">(null);
 
   useEffect(() => {
     if (!cloudId) return;
-    getPermit(cloudId).then((rec) => {
-      if (rec) {
-        setData(rec.data);
-        setPermitStatus(rec.status);
-        setAdminNote(rec.adminNote ?? "");
-      }
-      setCloudLoaded(true);
-    });
+    getPermit(cloudId)
+      .then((rec) => {
+        if (rec) {
+          setData(rec.data);
+          setPermitStatus(rec.status);
+          setAdminNote(rec.adminNote ?? "");
+        } else {
+          // 존재하지 않는 문서 → 빈 폼 대신 안내 표시 (권한 거부는 catch에서 처리)
+          setLoadError("notfound");
+        }
+        setCloudLoaded(true);
+      })
+      .catch((e) => {
+        console.error("허가서 조회 실패:", e);
+        // 읽기 권한 거부(rules deny)는 permission-denied 예외로 throw됨 → "찾을 수 없음"으로 통합(정보노출 최소화)
+        setLoadError(e?.code === "permission-denied" ? "notfound" : "error");
+        setCloudLoaded(true);
+      });
   }, [cloudId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!loaded || !cloudLoaded) return <div style={{ padding: 24 }}>불러오는 중…</div>;
+
+  if (loadError) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "#f8fafc" }}>
+        <div style={{ maxWidth: 420, textAlign: "center", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 32 }}>
+          <h1 style={{ margin: "0 0 8px", fontSize: 18, color: "#0a2240" }}>
+            {loadError === "notfound" ? "허가서를 찾을 수 없습니다" : "허가서를 불러오지 못했습니다"}
+          </h1>
+          <p style={{ margin: "0 0 20px", fontSize: 14, color: "#64748b" }}>
+            {loadError === "notfound"
+              ? "요청하신 허가서가 존재하지 않거나 접근 권한이 없습니다."
+              : "조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."}
+          </p>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+            <button className="primary" onClick={() => router.push("/fill")}>새 허가서 작성</button>
+            <button onClick={() => router.push("/")}>처음으로</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // draft / rejected 상태에서만 편집 가능 (반려건은 수정 후 재제출 허용)
   const isReadOnly = !!permitStatus && permitStatus !== "draft" && permitStatus !== "rejected";
