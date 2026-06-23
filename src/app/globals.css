@@ -41,7 +41,8 @@ body {
   position: absolute;
   display: flex;
   overflow: hidden;
-  contain: paint; /* 인쇄 시에도 자식 요소가 경계를 벗어나지 않도록 강제 */
+  contain: paint;
+  clip-path: inset(0); /* 인쇄 모드에서도 경계 초과 확실히 차단 */
   line-height: 1.04;
   color: #000;
   font-family: "맑은 고딕", "Malgun Gothic", sans-serif;

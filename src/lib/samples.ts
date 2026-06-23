@@ -30,10 +30,10 @@ export function sampleSinwoo(): PermitData {
     applicantName: "홍길동",
     applicantDate: "2026-02-27",
     admin: {
-      issue: { name: "김승정", dept: "생산/설비관리팀", date: "2026-02-27" },
-      review: { name: "박세현", dept: "환경안전", date: "2026-02-27" },
-      approve: { name: "이태훈", dept: "공장장", date: "2026-02-27" },
-      complete: { name: "김승정", dept: "생산/설비관리팀", date: "2026-02-27" },
+      issue: { name: "", dept: "", date: "" },
+      review: { name: "", dept: "", date: "" },
+      approve: { name: "", dept: "", date: "" },
+      complete: { name: "", dept: "", date: "" },
     },
   };
 }

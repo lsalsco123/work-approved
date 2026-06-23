@@ -74,7 +74,7 @@ function boxText(b: Box, text: string, opts: Partial<TextItem> = {}): TextItem {
 // 인쇄된 "소속 :" 뒤에 값만 기입
 function deptVal(ref: string, value: string): TextItem {
   const b = cell(ref);
-  return txt(ref, value, { x: b.x + b.w * 0.28, w: b.w * 0.7, align: "left", valign: "middle", fontPt: 6.5 });
+  return txt(ref, value, { x: b.x + b.w * 0.22, w: b.w * 0.76, align: "left", valign: "middle", fontPt: 6.5 });
 }
 // 인쇄된 "성명 :" 뒤, "(인)" 앞 빈칸에 이름 기입 (폭 0.18로 (인) 겹침 방지)
 function nameVal(ref: string, name: string): TextItem {
@@ -275,15 +275,26 @@ export function buildOverlays(data: PermitData): Overlay[] {
 
   data.jsa.slice(0, 6).forEach((r, i) => {
     const rw = JSA_ROWS[i];
-    // 단계 열은 행 번호만 표시 (텍스트 입력 불필요)
-    push(boxText(cell(`A${rw}`), String(i + 1), { align: "center", valign: "middle", fontPt: 5.5 }));
-    if (r.hazard) push(boxText(range(`B${rw}`, `D${rw}`), r.hazard, { fontPt: 5 }));
+    // 단계 숫자는 템플릿에 인쇄되어 있으므로 중복 추가하지 않음
+    if (r.hazard) {
+      const b = cell(`B${rw}`);
+      const yo = b.h * 0.06;
+      push(boxText({ ...b, y: b.y + yo, h: b.h - yo }, r.hazard, { fontPt: 5 }));
+    }
     if (r.frequency !== "") push(boxText(cell(`E${rw}`), String(r.frequency), { align: "center", valign: "middle", fontPt: 5.5 }));
     if (r.severity !== "") push(boxText(cell(`F${rw}`), String(r.severity), { align: "center", valign: "middle", fontPt: 5.5 }));
     if (r.frequency !== "" && r.severity !== "")
       push(boxText(cell(`G${rw}`), riskGrade(Number(r.frequency), Number(r.severity)), { align: "center", valign: "middle", fontPt: 5.5 }));
-    if (r.current) push(boxText(range(`H${rw}`, `K${rw}`), r.current, { fontPt: 5 }));
-    if (r.reduction) push(boxText(cell(`L${rw}`), r.reduction, { fontPt: 5 }));
+    if (r.current) {
+      const b = cell(`H${rw}`);
+      const yo = b.h * 0.06;
+      push(boxText({ ...b, y: b.y + yo, h: b.h - yo }, r.current, { fontPt: 5 }));
+    }
+    if (r.reduction) {
+      const b = cell(`L${rw}`);
+      const yo = b.h * 0.06;
+      push(boxText({ ...b, y: b.y + yo, h: b.h - yo }, r.reduction, { fontPt: 5 }));
+    }
   });
 
   // 교육 서약 - 참여자 성명 (Q138부터 3열 x 6행: Q/V/AA, rows 138,140,142,144,146,148)
