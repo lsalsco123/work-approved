@@ -226,8 +226,10 @@ export function buildOverlays(data: PermitData): Overlay[] {
   if (data.company) push(txt("C3", data.company));
   if (data.representative) push(txt("C5", data.representative));
   if (data.supervisor) push(txt("C7", data.supervisor));
-  if (data.workerCount) push(txt("J5", `${data.workerCount} 명( ${data.workerCount} 名)`, { cover: true }));
-  if (data.emergencyContact) push(txt("J7", data.emergencyContact, { cover: true, x: cell("J7").x + cell("J7").w * 0.1, w: cell("J7").w * 0.88 }));
+  // J5(작업인원)/J7(비상연락망) cover 우측을 LS 로고(x≈0.42) 앞에서 끊어,
+  // 흰 배경이 로고/우측 테두리를 침범하지 않게 한다. (인쇄된 "명(名)"은 여전히 덮음)
+  if (data.workerCount) push(txt("J5", `${data.workerCount} 명( ${data.workerCount} 名)`, { cover: true, w: cell("J5").w * 0.9 }));
+  if (data.emergencyContact) push(txt("J7", data.emergencyContact, { cover: true, x: cell("J7").x + cell("J7").w * 0.1, w: cell("J7").w * 0.79 }));
   if (data.workDate) push(txt("C9", fmtWorkTime(data.workDate, data.startTime, data.endTime)));
   if (data.workContent) push(txt("C11", data.workContent, { wrap: true, valign: "middle" }));
 
