@@ -154,6 +154,58 @@ body {
 .badge-completed { background: #64748b; }
 .mini.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
 
+/* ===== UX 보강 (2026-06 전체 개선) ===== */
+
+/* 부드러운 상호작용 + 접근성 포커스 링 */
+.mini, .inp, .chk, .sec-head, .topbar button {
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .05s ease;
+}
+.mini:hover:not(:disabled) { background: #f1f5f9; border-color: #94a3b8; }
+.mini.danger:hover:not(:disabled) { background: #fef2f2; border-color: #ef4444; }
+.mini.primary:hover:not(:disabled) { background: #1d4ed8; border-color: #1d4ed8; }
+.mini:active:not(:disabled), .topbar button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled, .mini:disabled { opacity: .55; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--fl-amber); outline-offset: 1px; border-radius: 4px; }
+
+/* select 를 .inp 와 동일하게 + 드롭다운 화살표 */
+select.inp {
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat; background-position: right 9px center;
+  padding-right: 28px; cursor: pointer; background-color: #fff;
+}
+
+/* 섹션/체크 상호작용 */
+.sec-head:hover { background: #eef2f7; }
+.chk:hover { border-color: #93c5fd; background: #f8fbff; }
+.chk.on:hover { background: #e0edff; }
+
+/* 필수 표시 */
+.req::after { content: " *"; color: #ef4444; font-weight: 700; }
+
+/* 카드/패널 공통 부드러운 그림자 */
+.sec, .adm-table { box-shadow: var(--fl-shadow); }
+
+/* 모바일/태블릿 대응: 폼+미리보기 세로 스택 */
+@media (max-width: 900px) {
+  .body { flex-direction: column; padding: 12px; gap: 12px; }
+  .formcol { flex: 1 1 auto; max-width: 100%; width: 100%; }
+  .previewcol { position: static; top: auto; width: 100%; flex: 1 1 auto; }
+  .topbar { height: auto; min-height: 52px; flex-wrap: wrap; padding: 8px 12px; row-gap: 6px; }
+  .topbar h1 { font-size: 14px; }
+  .topbar button { padding: 7px 11px; }
+}
+
+/* 작은 화면: 2열 입력을 1열로, 탭 터치영역 확대 */
+@media (max-width: 520px) {
+  .tworow { grid-template-columns: 1fr; }
+  .chk { padding: 9px 10px; }
+  .mini { padding: 8px 12px; font-size: 13px; }
+  .inp { padding: 9px 10px; font-size: 15px; } /* iOS 확대 방지(>=16 권장이나 15로 절충) */
+  .adm-table { font-size: 12px; }
+  .adm-table th, .adm-table td { padding: 7px 6px; }
+}
+
 /* ===== Print ===== */
 @media print {
   @page { size: A4 landscape; margin: 0; }

@@ -1,10 +1,10 @@
 "use client";
 import React from "react";
 
-export function Row({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+export function Row({ label, children, hint, required }: { label: string; children: React.ReactNode; hint?: string; required?: boolean }) {
   return (
     <label className="fld">
-      <span className="fld-label">{label}{hint && <em className="fld-hint">{hint}</em>}</span>
+      <span className="fld-label"><span className={required ? "req" : undefined}>{label}</span>{hint && <em className="fld-hint">{hint}</em>}</span>
       <span className="fld-control">{children}</span>
     </label>
   );

@@ -428,10 +428,10 @@ function FillInner() {
           )}
 
           <Section title="① 기본 정보">
-            <Row label="업체명(부서명)"><Text value={data.company} onChange={(v) => update("company", v)} readOnly={isReadOnly} /></Row>
+            <Row label="업체명(부서명)" required><Text value={data.company} onChange={(v) => update("company", v)} readOnly={isReadOnly} /></Row>
             <Row label="대표자"><Text value={data.representative} onChange={(v) => update("representative", v)} readOnly={isReadOnly} /></Row>
-            <Row label="작업감독자"><Text value={data.supervisor} onChange={(v) => update("supervisor", v)} readOnly={isReadOnly} /></Row>
-            <Row label="담당자(의뢰자)" hint="공사를 의뢰한 사내 담당자 · 뒷장 발급자로 표기됨">
+            <Row label="작업감독자" required><Text value={data.supervisor} onChange={(v) => update("supervisor", v)} readOnly={isReadOnly} /></Row>
+            <Row label="담당자(의뢰자)" required hint="공사를 의뢰한 사내 담당자 · 뒷장 발급자로 표기됨">
               <select
                 className="inp"
                 value={data.manager}
@@ -445,12 +445,12 @@ function FillInner() {
             </Row>
             <Row label="작업인원"><Text value={data.workerCount} onChange={(v) => update("workerCount", v)} type="number" readOnly={isReadOnly} /></Row>
             <Row label="비상연락망"><Text value={data.emergencyContact} onChange={(v) => update("emergencyContact", v)} placeholder="010-0000-0000" readOnly={isReadOnly} /></Row>
-            <Row label="작업일자" hint="당일만 · 여러 날은 날짜만 바꿔 재발급"><Text value={data.workDate} onChange={(v) => update("workDate", v)} type="date" readOnly={isReadOnly} /></Row>
+            <Row label="작업일자" required hint="당일만 · 여러 날은 날짜만 바꿔 재발급"><Text value={data.workDate} onChange={(v) => update("workDate", v)} type="date" readOnly={isReadOnly} /></Row>
             <div className="tworow">
               <Row label="시작시간"><Text value={data.startTime} onChange={(v) => update("startTime", v)} type="time" readOnly={isReadOnly} /></Row>
               <Row label="종료시간"><Text value={data.endTime} onChange={(v) => update("endTime", v)} type="time" readOnly={isReadOnly} /></Row>
             </div>
-            <Row label="작업내용"><Area value={data.workContent} onChange={(v) => update("workContent", v)} readOnly={isReadOnly} /></Row>
+            <Row label="작업내용" required><Area value={data.workContent} onChange={(v) => update("workContent", v)} readOnly={isReadOnly} /></Row>
             {!isReadOnly && <button className="mini" onClick={syncDates}>신청 날짜를 작업일자로 동기화</button>}
           </Section>
 
