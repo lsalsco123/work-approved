@@ -119,7 +119,7 @@ function FillInner() {
               : "조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."}
           </p>
           <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-            <button className="primary" onClick={() => router.push("/fill")}>새 허가서 작성</button>
+            <button className="primary" onClick={() => window.location.assign("/fill")}>새 허가서 작성</button>
             <button onClick={() => router.push("/")}>처음으로</button>
           </div>
         </div>
@@ -315,7 +315,7 @@ function FillInner() {
           <button onClick={() => router.push("/login")}>로그인</button>
         )}
         {isReadOnly && (
-          <button onClick={() => router.push("/fill")}>새 허가서 작성</button>
+          <button onClick={() => window.location.assign("/fill")}>새 허가서 작성</button>
         )}
         <button onClick={() => setShowPreview((s) => !s)}>{showPreview ? "미리보기 숨기기" : "미리보기"}</button>
         {templateMode ? (

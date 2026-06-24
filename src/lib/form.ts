@@ -88,10 +88,11 @@ function deptVal(ref: string, value: string): TextItem {
   const b = cell(ref);
   return txt(ref, value, { x: b.x + b.w * 0.22, w: b.w * 0.76, align: "left", valign: "middle", fontPt: 6.5 });
 }
-// 인쇄된 "성명 :" 뒤, "(인)" 앞 빈칸에 이름 기입 (폭 0.18로 (인) 겹침 방지)
+// 인쇄된 "성명 :" 뒤, "(인)" 앞 빈칸에 이름 기입.
+// 측정값: "(인)"은 셀 폭의 ~44% 지점 → 이름 박스를 5~39%에 두어 겹침 방지.
 function nameVal(ref: string, name: string): TextItem {
   const b = cell(ref);
-  return txt(ref, name, { x: b.x + b.w * 0.26, w: b.w * 0.18, align: "center", valign: "middle", fontPt: 6.5 });
+  return txt(ref, name, { x: b.x + b.w * 0.05, w: b.w * 0.34, align: "center", valign: "middle", fontPt: 6.5 });
 }
 
 function squareMark(ref: string): MarkItem | null {
@@ -295,8 +296,8 @@ export function buildOverlays(data: PermitData): Overlay[] {
 
   data.jsa.slice(0, 6).forEach((r, i) => {
     const rw = JSA_ROWS[i];
-    // 단계명 입력 시 A칸의 인쇄된 번호를 덮고 단계명 표기 (미입력 시 인쇄된 번호 유지)
-    if (r.step) push(txt(`A${rw}`, r.step, { cover: true, align: "center", valign: "middle", fontPt: 5.5 }));
+    // 단계명 입력 시 A칸의 인쇄된 번호를 덮고 단계명 표기 (상단 정렬 — 위험요인/현재조치와 줄맞춤)
+    if (r.step) { const ab = cell(`A${rw}`); push(txt(`A${rw}`, r.step, { cover: true, align: "center", valign: "top", fontPt: 5.5, x: ab.x, w: ab.w })); }
     if (r.hazard) {
       const b = cell(`B${rw}`);
       const yo = b.h * 0.06;
