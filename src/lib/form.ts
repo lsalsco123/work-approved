@@ -289,7 +289,8 @@ export function buildOverlays(data: PermitData): Overlay[] {
 
   data.jsa.slice(0, 6).forEach((r, i) => {
     const rw = JSA_ROWS[i];
-    // 단계 숫자는 템플릿에 인쇄되어 있으므로 중복 추가하지 않음
+    // 단계명 입력 시 A칸의 인쇄된 번호를 덮고 단계명 표기 (미입력 시 인쇄된 번호 유지)
+    if (r.step) push(txt(`A${rw}`, r.step, { cover: true, align: "center", valign: "middle", fontPt: 5.5 }));
     if (r.hazard) {
       const b = cell(`B${rw}`);
       const yo = b.h * 0.06;
@@ -345,6 +346,8 @@ export function buildOverlays(data: PermitData): Overlay[] {
     if (k === "review") { dept = "환경안전"; }
     // 승인 = 항상 공장장 이태훈
     if (k === "approve") { dept = "공장장"; name = "이태훈"; }
+    // 작업완료확인 = 담당자(발급자)와 동일
+    if (k === "complete" && data.manager) { dept = managerDept(data.manager) || dept; name = data.manager; }
     if (dept) push(deptVal(`T${rw}`, dept));
     if (name) push(nameVal(`X${rw}`, name));
     if (s.date) push(txt(`AB${rw}`, fmtKDate(s.date), { fontPt: 7 }));
