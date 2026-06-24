@@ -86,7 +86,8 @@ function boxText(b: Box, text: string, opts: Partial<TextItem> = {}): TextItem {
 // 인쇄된 "소속 :" 뒤에 값만 기입
 function deptVal(ref: string, value: string): TextItem {
   const b = cell(ref);
-  return txt(ref, value, { x: b.x + b.w * 0.22, w: b.w * 0.76, align: "left", valign: "middle", fontPt: 6.5 });
+  // 폭/폰트를 약간 줄여 우측의 인쇄된 "성명 :" 라벨과 겹치지 않게 함
+  return txt(ref, value, { x: b.x + b.w * 0.22, w: b.w * 0.66, align: "left", valign: "middle", fontPt: 6 });
 }
 // 인쇄된 "성명 :" 뒤, "(인)" 앞 빈칸에 이름 기입.
 // 측정값: "(인)"은 셀 폭의 ~44% 지점 → 이름 박스를 5~39%에 두어 겹침 방지.
@@ -301,7 +302,7 @@ export function buildOverlays(data: PermitData): Overlay[] {
     if (r.hazard) {
       const b = cell(`B${rw}`);
       const yo = b.h * 0.06;
-      push(boxText({ ...b, y: b.y + yo, h: b.h - yo }, r.hazard, { fontPt: 5 }));
+      push(boxText({ ...b, y: b.y + yo, h: b.h - yo }, r.hazard, { fontPt: 4.5 }));
     }
     if (r.frequency !== "") push(boxText(cell(`E${rw}`), String(r.frequency), { align: "center", valign: "middle", fontPt: 5.5 }));
     if (r.severity !== "") push(boxText(cell(`F${rw}`), String(r.severity), { align: "center", valign: "middle", fontPt: 5.5 }));
@@ -310,12 +311,12 @@ export function buildOverlays(data: PermitData): Overlay[] {
     if (r.current) {
       const b = cell(`H${rw}`);
       const yo = b.h * 0.06;
-      push(boxText({ ...b, y: b.y + yo, h: b.h - yo }, r.current, { fontPt: 5 }));
+      push(boxText({ ...b, y: b.y + yo, h: b.h - yo }, r.current, { fontPt: 4.5 }));
     }
     if (r.reduction) {
       const b = cell(`L${rw}`);
       const yo = b.h * 0.06;
-      push(boxText({ ...b, y: b.y + yo, h: b.h - yo }, r.reduction, { fontPt: 5 }));
+      push(boxText({ ...b, y: b.y + yo, h: b.h - yo }, r.reduction, { fontPt: 4.5 }));
     }
   });
 
@@ -357,7 +358,8 @@ export function buildOverlays(data: PermitData): Overlay[] {
     if (k === "complete" && data.manager) { dept = managerDept(data.manager) || dept; name = data.manager; }
     if (dept) push(deptVal(`T${rw}`, dept));
     if (name) push(nameVal(`X${rw}`, name));
-    if (s.date) push(txt(`AB${rw}`, fmtKDate(s.date), { fontPt: 7 }));
+    // 날짜: fmtKDate 폭(~0.121)이 AB셀(0.116)보다 넓고 셀 끝이 페이지 우측 끝 → 박스를 좌측으로 넓혀 셀 안에 맞춤 (신청 AB167과 동일 처리)
+    if (s.date) { const ab = cell(`AB${rw}`); push(txt(`AB${rw}`, fmtKDate(s.date), { x: ab.x - ab.w * 0.18, w: ab.w * 1.18, fontPt: 7 })); }
   });
 
   // 환경안전팀 확인 (○ -> ●)
