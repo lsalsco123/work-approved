@@ -8,9 +8,11 @@ import JsaEditor from "@/components/JsaEditor";
 import FormRenderer from "@/components/FormRenderer";
 import {
   WORK_TYPES, GEAR, GENERAL, HOT, CONFINED, ELECTRICAL, ELEVATED, EXCAVATION, HEAVY, RADIATION, PROCESSES,
+  confirmableItems,
 } from "@/lib/form";
 import { sampleGeneral } from "@/lib/samples";
-import { savePermit, submitPermit, getPermit, PermitStatus } from "@/lib/permits";
+import { MANAGERS } from "@/lib/managers";
+import { savePermit, submitPermit, getPermit, saveConfirmed, PermitStatus } from "@/lib/permits";
 import {
   listTemplates, getTemplate, createTemplate, updateTemplate, PermitTemplate,
 } from "@/lib/templates";
@@ -147,6 +149,7 @@ function FillInner() {
     const miss: string[] = [];
     if (!data.company.trim()) miss.push("업체명(부서명)");
     if (!data.supervisor.trim()) miss.push("작업감독자");
+    if (!data.manager) miss.push("담당자(의뢰자)");
     if (!data.workDate) miss.push("작업일자");
     if (!data.workContent.trim()) miss.push("작업내용");
     if (data.privacyConsent !== "agree") miss.push("개인정보 수집·이용 동의(동의 함)");
@@ -247,6 +250,26 @@ function FillInner() {
     }
   };
 
+  // 관리자 확인(○ → ●) 토글/일괄/저장
+  const toggleConfirm = (ref: string) => {
+    setData((d) => {
+      const has = d.confirmed.includes(ref);
+      return { ...d, confirmed: has ? d.confirmed.filter((x) => x !== ref) : [...d.confirmed, ref] };
+    });
+  };
+  const confirmAll = () => {
+    const refs = confirmableItems(data).map((i) => i.ref);
+    setData((d) => ({ ...d, confirmed: refs }));
+  };
+  const clearConfirm = () => setData((d) => ({ ...d, confirmed: [] }));
+  const handleSaveConfirm = async () => {
+    if (!permitId) return;
+    setSaving(true);
+    try { await saveConfirmed(permitId, data.confirmed); alert("확인 내용이 저장되었습니다."); }
+    catch (e) { alert("저장 실패: " + e); }
+    finally { setSaving(false); }
+  };
+
   const statusInfo = permitStatus ? STATUS_LABEL[permitStatus] : null;
   const isGuest = user?.role !== "admin";
 
@@ -319,6 +342,47 @@ function FillInner() {
 
       <div className="body">
         <div className="formcol no-print">
+          {!templateMode && user?.role === "admin" && permitId && (() => {
+            const items = confirmableItems(data);
+            return (
+              <div style={{ border: "1px solid #c7d2fe", borderRadius: 10, padding: 14, marginBottom: 14, background: "#eef2ff" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                  <strong style={{ fontSize: 14, color: "#3730a3" }}>관리자 확인</strong>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>업체가 체크한 항목을 확인하면 ●로 표시됩니다.</span>
+                  <div style={{ flex: 1 }} />
+                  <button className="mini" onClick={confirmAll}>일괄 확인</button>
+                  <button className="mini" onClick={clearConfirm}>전체 해제</button>
+                  <button className="mini" onClick={handleSaveConfirm} disabled={saving} style={{ background: "#4f46e5", color: "#fff" }}>
+                    {saving ? "저장 중…" : "확인 저장"}
+                  </button>
+                </div>
+                {items.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>확인할 체크 항목이 없습니다.</p>
+                ) : (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {items.map((it) => {
+                      const on = data.confirmed.includes(it.ref);
+                      return (
+                        <button
+                          key={it.ref}
+                          onClick={() => toggleConfirm(it.ref)}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 6,
+                            border: `1px solid ${on ? "#6366f1" : "#cbd5e1"}`,
+                            background: on ? "#e0e7ff" : "#fff",
+                            borderRadius: 16, padding: "4px 10px", fontSize: 12, cursor: "pointer",
+                            color: on ? "#3730a3" : "#475569",
+                          }}
+                        >
+                          <span style={{ fontSize: 14 }}>{on ? "●" : "○"}</span>{it.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {!isReadOnly && (
             <div className="toolbar">
               {!templateMode && (
@@ -343,6 +407,18 @@ function FillInner() {
             <Row label="업체명(부서명)"><Text value={data.company} onChange={(v) => update("company", v)} readOnly={isReadOnly} /></Row>
             <Row label="대표자"><Text value={data.representative} onChange={(v) => update("representative", v)} readOnly={isReadOnly} /></Row>
             <Row label="작업감독자"><Text value={data.supervisor} onChange={(v) => update("supervisor", v)} readOnly={isReadOnly} /></Row>
+            <Row label="담당자(의뢰자)" hint="공사를 의뢰한 사내 담당자 · 뒷장 발급자로 표기됨">
+              <select
+                className="inp"
+                value={data.manager}
+                onChange={(e) => update("manager", e.target.value)}
+                disabled={isReadOnly}
+                style={{ width: "100%" }}
+              >
+                <option value="">선택하세요</option>
+                {MANAGERS.map((m) => <option key={m.name} value={m.name}>{m.name} ({m.dept})</option>)}
+              </select>
+            </Row>
             <Row label="작업인원"><Text value={data.workerCount} onChange={(v) => update("workerCount", v)} type="number" readOnly={isReadOnly} /></Row>
             <Row label="비상연락망"><Text value={data.emergencyContact} onChange={(v) => update("emergencyContact", v)} placeholder="010-0000-0000" readOnly={isReadOnly} /></Row>
             <Row label="작업일자" hint="당일만 · 여러 날은 날짜만 바꿔 재발급"><Text value={data.workDate} onChange={(v) => update("workDate", v)} type="date" readOnly={isReadOnly} /></Row>

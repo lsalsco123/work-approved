@@ -1,6 +1,7 @@
 import coordsData from "./coords.json";
 import marksData from "./marks.json";
 import { PermitData, riskGrade } from "./types";
+import { managerDept } from "./managers";
 
 type Box = { page: number; x: number; y: number; w: number; h: number };
 type Mark = { page: number; sq: [number, number]; ci?: [number, number] };
@@ -323,6 +324,13 @@ export function buildOverlays(data: PermitData): Overlay[] {
   // ⑰ 작업승인 (관리자)
   (["issue", "review", "approve", "complete"] as const).forEach((k) => {
     const s = data.admin[k]; const rw = ADMIN_ROWS[k];
+    // 발급(issue) 슬롯 = 사내 담당자(의뢰자). 담당자 선택 시 이름·소속 자동 표기.
+    if (k === "issue" && data.manager) {
+      push(deptVal(`T${rw}`, managerDept(data.manager) || s.dept || ""));
+      push(nameVal(`X${rw}`, data.manager));
+      if (s.date) push(txt(`AB${rw}`, fmtKDate(s.date), { fontPt: 7 }));
+      return;
+    }
     if (s.dept) push(deptVal(`T${rw}`, s.dept));
     if (s.name) push(nameVal(`X${rw}`, s.name));
     if (s.date) push(txt(`AB${rw}`, fmtKDate(s.date), { fontPt: 7 }));
@@ -331,5 +339,24 @@ export function buildOverlays(data: PermitData): Overlay[] {
   // 환경안전팀 확인 (○ -> ●)
   data.confirmed.forEach((ref) => push(circleMark(ref)));
 
+  return out;
+}
+
+// 관리자 확인(○ -> ●) 대상: 업체가 체크했고 원형 마크가 존재하는 셀
+export function confirmableItems(data: PermitData): { ref: string; label: string }[] {
+  const out: { ref: string; label: string }[] = [];
+  const add = (ref: string, label: string) => { if (MARKS[ref]?.ci) out.push({ ref, label }); };
+  WORK_TYPES.forEach((w) => { if (data.workTypes.includes(w.v)) add(w.cell, `작업형태: ${w.label}`); });
+  GEAR.forEach((x) => { if (data.gear.includes(x.v)) add(x.cell, `보호구: ${x.v}`); });
+  GENERAL.forEach((x) => { if (data.general.includes(x.v)) add(x.cell, `일반: ${x.v}`); });
+  HOT.forEach((x) => { if (data.hot.includes(x.v)) add(x.cell, `화기: ${x.v}`); });
+  CONFINED.forEach((x) => { if (data.confined.includes(x.v)) add(x.cell, `밀폐: ${x.v}`); });
+  ELECTRICAL.forEach((x) => { if (data.electrical.includes(x.v)) add(x.cell, `전기: ${x.v}`); });
+  ELEVATED.forEach((x) => { if (data.elevated.includes(x.v)) add(x.cell, `고소: ${x.v}`); });
+  EXCAVATION.forEach((x) => { if (data.excavation.includes(x.v)) add(x.cell, `굴착: ${x.v}`); });
+  HEAVY.forEach((x) => { if (data.heavy.includes(x.v)) add(x.cell, `중장비: ${x.v}`); });
+  RADIATION.forEach((x) => { if (data.radiation.includes(x.v)) add(x.cell, `방사능: ${x.v}`); });
+  if (data.energyMode === "none") add("Q31", "에너지원: 해당없음");
+  if (data.energyMode === "general") add("U31", "에너지원: 차단조치");
   return out;
 }

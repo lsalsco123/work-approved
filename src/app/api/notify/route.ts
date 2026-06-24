@@ -6,6 +6,32 @@ const NOTIFY_TO = process.env.NOTIFY_EMAIL ?? "sehyun.park@alsco.co.kr";
 // alsco.co.kr 도메인이 Resend에서 인증되지 않은 경우 onboarding@resend.dev 사용
 const FROM = process.env.RESEND_FROM ?? "작업허가서 시스템 <onboarding@resend.dev>";
 
+// 사내 담당자(의뢰자) 이메일 — 서버 전용. 클라이언트 번들로 전송되지 않는다.
+const MANAGER_EMAILS: Record<string, string> = {
+  "이도현": "dohyun.lee@alsco.co.kr",
+  "이재준": "jaejun.lee@alsco.co.kr",
+  "김승정": "seungjung.kim@alsco.co.kr",
+  "신동호": "dongho.shin@alsco.co.kr",
+  "노대균": "daegyun.roh@alsco.co.kr",
+  "박경호": "kyungho.park@alsco.co.kr",
+  "노영준": "yeongjune.noh@alsco.co.kr",
+  "김지훈": "jihoon.kim2@alsco.co.kr",
+  "배상식": "sangsik.bae@alsco.co.kr",
+  "박병후": "byounghoo.park@alsco.co.kr",
+  "박세현": "sehyun.park@alsco.co.kr",
+  "이승준": "seungjun.lee@alsco.co.kr",
+  "이승훈": "seunghun.lee@alsco.co.kr",
+  "정창재": "changjae.jeong@alsco.co.kr",
+  "황성재": "sungjae.hwang@alsco.co.kr",
+  "박승준": "seungjun.park@alsco.co.kr",
+  "조성운": "seongun.cho@alsco.co.kr",
+  "박대규": "daekyu.park@alsco.co.kr",
+  "김욱진": "wookjin.kim@alsco.co.kr",
+  "곽복영": "bokyoung.kwak@alsco.co.kr",
+  "임종문": "jongmun.yim@alsco.co.kr",
+  "김율구": "yulgu.kim@alsco.co.kr",
+};
+
 const WORK_TYPE_LABELS: Record<string, string> = {
   general: "일반작업", hot: "화기작업", confined: "밀폐공간작업",
   electrical: "전기차단작업", elevated: "고소작업", excavation: "굴착작업",
@@ -107,6 +133,7 @@ function generateAttachmentHtml(d: Record<string, any>, permitId: string): strin
   let basic = frow("업체명", d.company);
   basic += frow("대표자", d.representative);
   basic += frow("작업감독자", d.supervisor);
+  basic += frow("담당자(의뢰자)", d.manager);
   basic += frow("작업인원", d.workerCount ? d.workerCount + " 명" : "");
   basic += frow("비상연락망", d.emergencyContact);
   basic += frow("작업일자", d.workDate);
@@ -262,6 +289,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
     }
 
+    // 담당자(의뢰자) 알림: 선택된 담당자 이메일을 수신자에 추가 (서버측 매핑)
+    const managerName: string = (permitData?.manager as string) || "";
+    const managerEmail = managerName ? MANAGER_EMAILS[managerName] : undefined;
+    const recipients = Array.from(new Set([NOTIFY_TO, ...(managerEmail ? [managerEmail] : [])]));
+
     const subject = `[작업허가서 제출] ${company || "업체명 미입력"} — ${workContent?.slice(0, 40) || "작업내용 없음"}`;
 
     const emailHtml = `
@@ -277,6 +309,7 @@ export async function POST(req: NextRequest) {
       <tr><td style="padding:8px 0;color:#64748b;">작업일자</td><td style="padding:8px 0;">${workDate || "-"}</td></tr>
       <tr><td style="padding:8px 0;color:#64748b;">작업시간</td><td style="padding:8px 0;">${startTime || "-"} ~ ${endTime || "-"}</td></tr>
       <tr><td style="padding:8px 0;color:#64748b;">작업감독자</td><td style="padding:8px 0;">${supervisor || "-"}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">담당자(의뢰자)</td><td style="padding:8px 0;font-weight:600;">${managerName || "-"}</td></tr>
     </table>
     <p style="margin:16px 0 4px;font-size:13px;color:#64748b;">첨부 파일에서 전체 작업허가서 내용을 확인하실 수 있습니다.</p>
     ${permitId ? `
@@ -300,7 +333,7 @@ export async function POST(req: NextRequest) {
 
     await resend.emails.send({
       from: FROM,
-      to: NOTIFY_TO,
+      to: recipients,
       subject,
       html: emailHtml,
       ...(attachmentHtml ? {

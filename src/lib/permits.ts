@@ -60,6 +60,11 @@ export async function completePermit(id: string): Promise<void> {
   await updateDoc(doc(db, COL, id), { status: "completed", updatedAt: serverTimestamp() });
 }
 
+// 관리자 확인(원형 ●) 결과 저장 — permits 문서의 confirmed 배열만 갱신
+export async function saveConfirmed(id: string, confirmed: string[]): Promise<void> {
+  await updateDoc(doc(db, COL, id), { "data.confirmed": confirmed, updatedAt: serverTimestamp() });
+}
+
 export async function getPermit(id: string): Promise<PermitRecord | null> {
   const snap = await getDoc(doc(db, COL, id));
   if (!snap.exists()) return null;

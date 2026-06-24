@@ -22,6 +22,7 @@ export interface PermitData {
   supervisor: string;       // C7 작업감독자
   workerCount: string;      // J5 작업인원
   emergencyContact: string; // J7 비상연락망
+  manager: string;          // 사내 담당자(의뢰자) = 뒷장 발급자
   workDate: string;         // C9 날짜 (YYYY-MM-DD)
   startTime: string;        // C9 시작 (HH:MM)
   endTime: string;          // C9 종료 (HH:MM)
@@ -104,7 +105,7 @@ export interface PermitData {
 export function emptyPermit(): PermitData {
   return {
     company: "", representative: "", supervisor: "", workerCount: "",
-    emergencyContact: "", workDate: "", startTime: "", endTime: "", workContent: "",
+    emergencyContact: "", manager: "", workDate: "", startTime: "", endTime: "", workContent: "",
     workTypes: [], workTypeEtc: "", processes: [], processEtc: "", gear: [], gearEtc: "",
     general: [], hot: [], hotFireWatcher: "", hotFireManager: "",
     confined: [], confinedWatcher: "", electrical: [], electricalCutoffTime: "", electricalCutoffPerson: "",
