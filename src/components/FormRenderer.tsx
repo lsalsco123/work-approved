@@ -44,6 +44,22 @@ function PageBox({ page, overlays }: { page: number; overlays: Overlay[] }) {
             />
           );
         }
+        if (o.kind === "image") {
+          // 직접 서명 이미지
+          return (
+            <img
+              key={i}
+              src={o.src}
+              alt=""
+              style={{
+                position: "absolute",
+                left: pctX(o.x), top: pctY(o.y),
+                width: pctX(o.w), height: pctY(o.h),
+                objectFit: "contain",
+              }}
+            />
+          );
+        }
         // oval (process selection) — red ellipse
         return (
           <span

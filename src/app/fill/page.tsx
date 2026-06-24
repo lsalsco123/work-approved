@@ -10,9 +10,10 @@ import {
   WORK_TYPES, GEAR, GENERAL, HOT, CONFINED, ELECTRICAL, ELEVATED, EXCAVATION, HEAVY, RADIATION, PROCESSES,
   confirmableItems,
 } from "@/lib/form";
+import SignaturePad from "@/components/SignaturePad";
 import { sampleGeneral } from "@/lib/samples";
-import { MANAGERS } from "@/lib/managers";
-import { savePermit, submitPermit, getPermit, saveConfirmed, PermitStatus } from "@/lib/permits";
+import { MANAGERS, SAFETY_REVIEWERS } from "@/lib/managers";
+import { savePermit, submitPermit, getPermit, saveAdminFields, PermitStatus } from "@/lib/permits";
 import {
   listTemplates, getTemplate, createTemplate, updateTemplate, PermitTemplate,
 } from "@/lib/templates";
@@ -48,6 +49,8 @@ function FillInner() {
   const [templateName, setTemplateName] = useState("");
   const [templateWorkType, setTemplateWorkType] = useState("");
   const [templateOrder, setTemplateOrder] = useState(999);
+  // 서명 팝업 대상 참여자 인덱스 (null=닫힘)
+  const [signingIndex, setSigningIndex] = useState<number | null>(null);
   // 클라우드 허가서 로드 결과: null=정상, "notfound"=문서 없음/권한 없음, "error"=조회 실패
   const [loadError, setLoadError] = useState<null | "notfound" | "error">(null);
 
@@ -265,10 +268,21 @@ function FillInner() {
   const handleSaveConfirm = async () => {
     if (!permitId) return;
     setSaving(true);
-    try { await saveConfirmed(permitId, data.confirmed); alert("확인 내용이 저장되었습니다."); }
+    try { await saveAdminFields(permitId, data.confirmed, data.admin.review.name); alert("확인 내용이 저장되었습니다."); }
     catch (e) { alert("저장 실패: " + e); }
     finally { setSaving(false); }
   };
+
+  // 교육서약 참여자 (이름 + 직접 서명)
+  const addSigner = () => setData((d) => ({ ...d, eduSigners: [...d.eduSigners, { name: "", sign: "" }] }));
+  const updateSignerName = (i: number, name: string) =>
+    setData((d) => { const arr = [...d.eduSigners]; arr[i] = { ...arr[i], name }; return { ...d, eduSigners: arr }; });
+  const setSignerSign = (i: number, sign: string) =>
+    setData((d) => { const arr = [...d.eduSigners]; arr[i] = { ...arr[i], sign }; return { ...d, eduSigners: arr }; });
+  const removeSigner = (i: number) =>
+    setData((d) => ({ ...d, eduSigners: d.eduSigners.filter((_, j) => j !== i) }));
+  const setReviewer = (name: string) =>
+    setData((d) => ({ ...d, admin: { ...d.admin, review: { ...d.admin.review, name, dept: "환경안전" } } }));
 
   const statusInfo = permitStatus ? STATUS_LABEL[permitStatus] : null;
   const isGuest = user?.role !== "admin";
@@ -355,6 +369,16 @@ function FillInner() {
                   <button className="mini" onClick={handleSaveConfirm} disabled={saving} style={{ background: "#4f46e5", color: "#fff" }}>
                     {saving ? "저장 중…" : "확인 저장"}
                   </button>
+                </div>
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", marginBottom: 10, fontSize: 13 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    검토자(환경안전):
+                    <select className="inp" value={data.admin.review.name} onChange={(e) => setReviewer(e.target.value)}>
+                      <option value="">선택</option>
+                      {SAFETY_REVIEWERS.map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </label>
+                  <span style={{ color: "#475569" }}>승인: <strong>공장장 이태훈</strong> <span style={{ color: "#94a3b8" }}>(자동)</span></span>
                 </div>
                 {items.length === 0 ? (
                   <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>확인할 체크 항목이 없습니다.</p>
@@ -525,10 +549,36 @@ function FillInner() {
           </Section>
 
           <Section title="환경안전 교육실시 및 서약">
-            <p className="muted">대표자가 작업자에게 교육 후 서명. 작업자 서명란은 출력 후 현장 수기.</p>
+            <p className="muted">대표자가 함께 작업하는 인원을 등록하고, 각자 직접 서명합니다. (최대 18명)</p>
             <div className="tworow">
               <Row label="대표자(강사) 성명"><Text value={data.representativeSignName} onChange={(v) => update("representativeSignName", v)} readOnly={isReadOnly} /></Row>
               <Row label="교육 일자"><Text value={data.representativeSignDate} onChange={(v) => update("representativeSignDate", v)} type="date" readOnly={isReadOnly} /></Row>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              {data.eduSigners.length === 0 && <p className="muted">등록된 참여자가 없습니다.</p>}
+              {data.eduSigners.map((s, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, margin: "6px 0" }}>
+                  <span style={{ width: 22, textAlign: "right", color: "#94a3b8", fontSize: 12 }}>{i + 1}</span>
+                  <input
+                    className="inp" style={{ flex: 1 }} placeholder="성명" value={s.name}
+                    onChange={(e) => updateSignerName(i, e.target.value)} disabled={isReadOnly}
+                  />
+                  {s.sign
+                    ? <img src={s.sign} alt="서명" style={{ height: 34, width: 90, objectFit: "contain", border: "1px solid #e2e8f0", borderRadius: 4, background: "#fff" }} />
+                    : <span style={{ fontSize: 12, color: "#94a3b8", width: 90, textAlign: "center" }}>미서명</span>}
+                  {!isReadOnly && (
+                    <>
+                      <button className="mini" onClick={() => setSigningIndex(i)}>{s.sign ? "서명 수정" : "서명"}</button>
+                      <button className="mini danger" onClick={() => removeSigner(i)}>삭제</button>
+                    </>
+                  )}
+                </div>
+              ))}
+              {!isReadOnly && (
+                <button className="mini" onClick={addSigner} disabled={data.eduSigners.length >= 18} style={{ marginTop: 6 }}>
+                  + 참여자 추가
+                </button>
+              )}
             </div>
           </Section>
 
@@ -552,6 +602,15 @@ function FillInner() {
           </div>
         )}
       </div>
+
+      {signingIndex !== null && (
+        <SignaturePad
+          title={`${data.eduSigners[signingIndex]?.name || `${signingIndex + 1}번`} 참여자 서명`}
+          initial={data.eduSigners[signingIndex]?.sign}
+          onSave={(d) => { setSignerSign(signingIndex, d); setSigningIndex(null); }}
+          onClose={() => setSigningIndex(null)}
+        />
+      )}
     </div>
   );
 }

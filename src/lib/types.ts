@@ -13,6 +13,7 @@ export interface SignSlot {
   name: string;
   dept?: string;
   date?: string; // YYYY-MM-DD
+  sign?: string; // 직접 서명 이미지 (dataURL) — eduSigners 용
 }
 
 export interface PermitData {

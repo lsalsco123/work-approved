@@ -46,7 +46,18 @@ export interface OvalItem {
   page: number;
   x: number; y: number; w: number; h: number;
 }
-export type Overlay = TextItem | MarkItem | OvalItem;
+export interface ImageItem {
+  kind: "image";
+  page: number;
+  x: number; y: number; w: number; h: number;
+  src: string;
+}
+export type Overlay = TextItem | MarkItem | OvalItem | ImageItem;
+
+// 셀 안에 여백을 두고 이미지를 맞춰 넣는다 (서명 등)
+function imgFit(b: Box, src: string): ImageItem {
+  return { kind: "image", page: b.page, x: b.x + b.w * 0.04, y: b.y + b.h * 0.08, w: b.w * 0.92, h: b.h * 0.84, src };
+}
 
 const DEF_FONT = 7.5; // pt at print scale
 
@@ -299,12 +310,13 @@ export function buildOverlays(data: PermitData): Overlay[] {
   });
 
   // 교육 서약 - 참여자 성명 (Q138부터 3열 x 6행: Q/V/AA, rows 138,140,142,144,146,148)
-  const EDU_COLS = ["Q", "V", "AA"];
+  const EDU_COLS = ["Q", "V", "AA"];       // 성명 칸
+  const EDU_SIGN_COLS = ["S", "X", "AC"];  // 서명 칸 (넓은 칸)
   const EDU_ROWS = [138, 140, 142, 144, 146, 148];
   data.eduSigners.slice(0, 18).forEach((s, i) => {
-    if (!s.name) return;
-    const c = EDU_COLS[i % 3], rw = EDU_ROWS[Math.floor(i / 3)];
-    push(txt(`${c}${rw}`, s.name, { align: "center", fontPt: 6.5 }));
+    const col = i % 3, rw = EDU_ROWS[Math.floor(i / 3)];
+    if (s.name) push(txt(`${EDU_COLS[col]}${rw}`, s.name, { align: "center", fontPt: 6.5 }));
+    if (s.sign) out.push(imgFit(cell(`${EDU_SIGN_COLS[col]}${rw}`), s.sign));
   });
   if (data.representativeSignName) push(nameVal("S150", data.representativeSignName));
   if (data.representativeSignDate) push(txt("X150", fmtKDate(data.representativeSignDate), { fontPt: 7 }));
@@ -324,15 +336,15 @@ export function buildOverlays(data: PermitData): Overlay[] {
   // ⑰ 작업승인 (관리자)
   (["issue", "review", "approve", "complete"] as const).forEach((k) => {
     const s = data.admin[k]; const rw = ADMIN_ROWS[k];
-    // 발급(issue) 슬롯 = 사내 담당자(의뢰자). 담당자 선택 시 이름·소속 자동 표기.
-    if (k === "issue" && data.manager) {
-      push(deptVal(`T${rw}`, managerDept(data.manager) || s.dept || ""));
-      push(nameVal(`X${rw}`, data.manager));
-      if (s.date) push(txt(`AB${rw}`, fmtKDate(s.date), { fontPt: 7 }));
-      return;
-    }
-    if (s.dept) push(deptVal(`T${rw}`, s.dept));
-    if (s.name) push(nameVal(`X${rw}`, s.name));
+    let dept = s.dept ?? "", name = s.name ?? "";
+    // 발급 = 사내 담당자(의뢰자)
+    if (k === "issue" && data.manager) { dept = managerDept(data.manager) || dept; name = data.manager; }
+    // 검토 = 소속 항상 "환경안전" (성명은 환경안전팀에서 선택)
+    if (k === "review") { dept = "환경안전"; }
+    // 승인 = 항상 공장장 이태훈
+    if (k === "approve") { dept = "공장장"; name = "이태훈"; }
+    if (dept) push(deptVal(`T${rw}`, dept));
+    if (name) push(nameVal(`X${rw}`, name));
     if (s.date) push(txt(`AB${rw}`, fmtKDate(s.date), { fontPt: 7 }));
   });
 
