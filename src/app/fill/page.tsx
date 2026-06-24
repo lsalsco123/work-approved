@@ -9,8 +9,11 @@ import FormRenderer from "@/components/FormRenderer";
 import {
   WORK_TYPES, GEAR, GENERAL, HOT, CONFINED, ELECTRICAL, ELEVATED, EXCAVATION, HEAVY, RADIATION, PROCESSES,
 } from "@/lib/form";
-import { sampleSinwoo } from "@/lib/samples";
+import { sampleGeneral } from "@/lib/samples";
 import { savePermit, submitPermit, getPermit, PermitStatus } from "@/lib/permits";
+import {
+  listTemplates, getTemplate, createTemplate, updateTemplate, PermitTemplate,
+} from "@/lib/templates";
 import { auth } from "@/lib/firebase";
 
 const STATUS_LABEL: Record<PermitStatus, { text: string; color: string }> = {
@@ -26,14 +29,23 @@ function FillInner() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const cloudId = searchParams.get("id");
-  const { data, setData, update, toggleIn, reset, loaded } = usePermit({ disableLocalStorage: !!cloudId });
+  // 관리자 예시 양식 편집 모드: ?template=<id>(수정) / ?templateNew=1(신규)
+  const templateId = searchParams.get("template");
+  const isNewTemplate = searchParams.get("templateNew") === "1";
+  const templateMode = !!templateId || isNewTemplate;
+  const { data, setData, update, toggleIn, reset, loaded } = usePermit({ disableLocalStorage: !!cloudId || templateMode });
 
   const [showPreview, setShowPreview] = useState(true);
   const [permitId, setPermitId] = useState<string | null>(cloudId);
   const [permitStatus, setPermitStatus] = useState<PermitStatus | null>(null);
   const [adminNote, setAdminNote] = useState<string>("");
   const [saving, setSaving] = useState(false);
-  const [cloudLoaded, setCloudLoaded] = useState(!cloudId);
+  const [cloudLoaded, setCloudLoaded] = useState(!cloudId && !templateId);
+  // 작성 모드에서 게스트가 고를 예시 양식 목록
+  const [templates, setTemplates] = useState<PermitTemplate[]>([]);
+  const [templateName, setTemplateName] = useState("");
+  const [templateWorkType, setTemplateWorkType] = useState("");
+  const [templateOrder, setTemplateOrder] = useState(999);
   // 클라우드 허가서 로드 결과: null=정상, "notfound"=문서 없음/권한 없음, "error"=조회 실패
   const [loadError, setLoadError] = useState<null | "notfound" | "error">(null);
 
@@ -58,6 +70,34 @@ function FillInner() {
         setCloudLoaded(true);
       });
   }, [cloudId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 예시 양식 편집 모드: 기존 템플릿 로드
+  useEffect(() => {
+    if (!templateId) return;
+    getTemplate(templateId)
+      .then((t) => {
+        if (t) {
+          setData(t.data);
+          setTemplateName(t.name);
+          setTemplateWorkType(t.workType);
+          setTemplateOrder(t.order);
+        } else {
+          setLoadError("notfound");
+        }
+        setCloudLoaded(true);
+      })
+      .catch((e) => {
+        console.error("예시 양식 조회 실패:", e);
+        setLoadError(e?.code === "permission-denied" ? "notfound" : "error");
+        setCloudLoaded(true);
+      });
+  }, [templateId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 작성 모드: 게스트가 불러올 예시 양식 목록
+  useEffect(() => {
+    if (templateMode) return;
+    listTemplates().then(setTemplates).catch(() => {});
+  }, [templateMode]);
 
   if (!loaded || !cloudLoaded) return <div style={{ padding: 24 }}>불러오는 중…</div>;
 
@@ -176,6 +216,37 @@ function FillInner() {
     setData((p) => ({ ...p, applicantDate: d, representativeSignDate: d }));
   };
 
+  // 예시 양식 저장 (관리자 전용)
+  const handleSaveTemplate = async () => {
+    if (!user || user.role !== "admin") { alert("관리자만 예시 양식을 저장할 수 있습니다."); return; }
+    const name = window.prompt("예시 양식 이름:", templateName || "");
+    if (name === null) return;
+    if (!name.trim()) { alert("이름을 입력해주세요."); return; }
+    setSaving(true);
+    try {
+      if (templateId) {
+        await updateTemplate(templateId, { name: name.trim(), workType: templateWorkType, order: templateOrder, data }, user.email);
+      } else {
+        await createTemplate({ name: name.trim(), workType: templateWorkType, order: Date.now(), data }, user.email);
+      }
+      alert("예시 양식이 저장되었습니다.");
+      router.push("/admin");
+    } catch (e) {
+      alert("저장 실패: " + e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // 게스트가 예시 양식 선택 → 폼에 적용
+  const applyTemplate = (id: string) => {
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    if (window.confirm(`"${t.name}" 예시를 불러올까요? 현재 입력 내용을 덮어씁니다.`)) {
+      setData(t.data);
+    }
+  };
+
   const statusInfo = permitStatus ? STATUS_LABEL[permitStatus] : null;
   const isGuest = user?.role !== "admin";
 
@@ -183,8 +254,13 @@ function FillInner() {
     <div className="layout">
       <header className="topbar no-print">
         <img src="/ls_alsco_logo.png" alt="LS Alsco" className="topbar-logo" />
-        <h1>환경안전 작업허가서</h1>
-        {statusInfo && (
+        <h1>{templateMode ? "예시 양식 편집" : "환경안전 작업허가서"}</h1>
+        {templateMode && (
+          <span style={{ fontSize: 12, padding: "3px 8px", borderRadius: 4, background: "#7c3aed", color: "#fff", fontWeight: 700 }}>
+            관리자 · 예시 양식
+          </span>
+        )}
+        {!templateMode && statusInfo && (
           <span style={{ fontSize: 12, padding: "3px 8px", borderRadius: 4, background: statusInfo.color, color: "#fff", fontWeight: 700 }}>
             {statusInfo.text}
           </span>
@@ -205,17 +281,28 @@ function FillInner() {
           <button onClick={() => router.push("/fill")}>새 허가서 작성</button>
         )}
         <button onClick={() => setShowPreview((s) => !s)}>{showPreview ? "미리보기 숨기기" : "미리보기"}</button>
-        {user && !isReadOnly && isGuest && (
+        {templateMode ? (
           <>
-            <button onClick={handleSave} disabled={saving}>{saving ? "저장 중…" : "임시저장"}</button>
-            {canSubmit && (
-              <button onClick={handleSubmit} disabled={saving} className="primary">
-                {permitStatus === "rejected" ? "재제출" : "제출"}
-              </button>
+            <button onClick={() => router.push("/admin")}>취소</button>
+            <button onClick={handleSaveTemplate} disabled={saving} className="primary">
+              {saving ? "저장 중…" : "예시 양식 저장"}
+            </button>
+          </>
+        ) : (
+          <>
+            {user && !isReadOnly && isGuest && (
+              <>
+                <button onClick={handleSave} disabled={saving}>{saving ? "저장 중…" : "임시저장"}</button>
+                {canSubmit && (
+                  <button onClick={handleSubmit} disabled={saving} className="primary">
+                    {permitStatus === "rejected" ? "재제출" : "제출"}
+                  </button>
+                )}
+              </>
             )}
+            <button onClick={() => window.print()} className="primary">인쇄 / PDF</button>
           </>
         )}
-        <button onClick={() => window.print()} className="primary">인쇄 / PDF</button>
       </header>
 
       {permitStatus === "rejected" && (
@@ -234,7 +321,20 @@ function FillInner() {
         <div className="formcol no-print">
           {!isReadOnly && (
             <div className="toolbar">
-              <button className="mini" onClick={() => setData(sampleSinwoo())}>예시 채우기</button>
+              {!templateMode && (
+                templates.length > 0 ? (
+                  <select
+                    className="mini"
+                    defaultValue=""
+                    onChange={(e) => { if (e.target.value) { applyTemplate(e.target.value); e.target.value = ""; } }}
+                  >
+                    <option value="">예시 양식 불러오기…</option>
+                    {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                ) : (
+                  <button className="mini" onClick={() => setData(sampleGeneral())}>예시 채우기</button>
+                )
+              )}
               <button className="mini danger" onClick={() => { if (window.confirm("모든 입력을 초기화할까요?")) reset(); }}>초기화</button>
             </div>
           )}

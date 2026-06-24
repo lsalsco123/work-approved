@@ -6,6 +6,8 @@ import {
   listAllPermits, approvePermit, rejectPermit, completePermit,
   PermitRecord, PermitStatus,
 } from "@/lib/permits";
+import { listTemplates, deleteTemplate, createTemplate, PermitTemplate } from "@/lib/templates";
+import { DEFAULT_TEMPLATES } from "@/lib/samples";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
   draft: "임시저장",
@@ -39,6 +41,8 @@ export default function AdminPage() {
   const [loadError, setLoadError] = useState(false);
   const [filter, setFilter] = useState<"all" | PermitStatus>("submitted");
   const [search, setSearch] = useState("");
+  const [templates, setTemplates] = useState<PermitTemplate[]>([]);
+  const [tplBusy, setTplBusy] = useState(false);
 
   useEffect(() => {
     if (!loading && (!user || user.role !== "admin")) router.replace("/login");
@@ -52,7 +56,31 @@ export default function AdminPage() {
     setFetching(false);
   };
 
-  useEffect(() => { if (user?.role === "admin") fetchAll(); }, [user]);
+  const fetchTemplates = async () => {
+    try { setTemplates(await listTemplates()); }
+    catch (e) { console.error("예시 양식 조회 실패:", e); }
+  };
+
+  useEffect(() => { if (user?.role === "admin") { fetchAll(); fetchTemplates(); } }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const seedDefaults = async () => {
+    if (!user) return;
+    if (!window.confirm(`기본 예시 양식 ${DEFAULT_TEMPLATES.length}종을 생성할까요?`)) return;
+    setTplBusy(true);
+    try {
+      for (const t of DEFAULT_TEMPLATES) await createTemplate(t, user.email);
+      await fetchTemplates();
+    } catch (e) { alert("생성 실패: " + e); }
+    finally { setTplBusy(false); }
+  };
+
+  const removeTemplate = async (t: PermitTemplate) => {
+    if (!window.confirm(`"${t.name}" 예시 양식을 삭제할까요?`)) return;
+    setTplBusy(true);
+    try { await deleteTemplate(t.id); await fetchTemplates(); }
+    catch (e) { alert("삭제 실패: " + e); }
+    finally { setTplBusy(false); }
+  };
 
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -107,6 +135,33 @@ export default function AdminPage() {
       </header>
 
       <div style={{ padding: 16, maxWidth: 1280, margin: "0 auto" }}>
+        <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 16, background: "#faf5ff" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <strong style={{ fontSize: 14, color: "#6d28d9" }}>예시 양식 관리</strong>
+            <span style={{ fontSize: 12, color: "#64748b" }}>외주업체가 작성 화면에서 불러오는 예시입니다.</span>
+            <div style={{ flex: 1 }} />
+            <button className="mini" onClick={() => router.push("/fill?templateNew=1")}>+ 새 예시 양식</button>
+            {templates.length === 0 && (
+              <button className="mini" disabled={tplBusy} onClick={seedDefaults}>{tplBusy ? "생성 중…" : "기본 예시 생성"}</button>
+            )}
+          </div>
+          {templates.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
+              아직 예시 양식이 없습니다. “기본 예시 생성”으로 작업형태별 기본 양식 7종을 만들 수 있어요.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {templates.map((t) => (
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, border: "1px solid #e9d5ff", borderRadius: 8, padding: "6px 10px", background: "#fff" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{t.name}</span>
+                  <button className="mini" disabled={tplBusy} onClick={() => router.push(`/fill?template=${t.id}`)}>수정</button>
+                  <button className="mini danger" disabled={tplBusy} onClick={() => removeTemplate(t)}>삭제</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
           <span className="stat-badge badge-submitted">제출됨 {count("submitted")}건</span>
           <span className="stat-badge badge-completed">완료 {count("completed")}건</span>

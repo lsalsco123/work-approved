@@ -44,5 +44,11 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
     }
+
+    // 작업형태별 예시 양식 (게스트는 불러오기만, 관리자만 작성/수정/삭제)
+    match /permitTemplates/{id} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
   }
 }
