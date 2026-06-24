@@ -270,6 +270,12 @@ export function buildOverlays(data: PermitData): Overlay[] {
   if (data.heavySignaler) push(txt("U1", `신호수/유도자 : ${data.heavySignaler}`, { fontPt: 6.5 }));
   if (data.heavyEquipType) push(txt("AA5", data.heavyEquipType, { fontPt: 6.5 }));
 
+  // ② 일반작업 구역 작업감독자(G55) = 업체 작업감독자(C7)와 동일 ("작업감독자 :" 와 "(인)" 사이)
+  if (data.supervisor) {
+    const gb = cell("G55");
+    push(txt("G55", data.supervisor, { x: gb.x + gb.w * 0.42, w: gb.w * 0.30, align: "center", valign: "middle", fontPt: 6.5 }));
+  }
+
   // ⑪ 에너지원
   if (data.energyMode === "none") push(squareMark("Q31"));
   if (data.energyMode === "general") push(squareMark("U31"));
