@@ -162,10 +162,29 @@ export default function AdminPage() {
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <span className="stat-badge badge-submitted">제출됨 {count("submitted")}건</span>
-          <span className="stat-badge badge-completed">완료 {count("completed")}건</span>
-          <button className="mini" onClick={fetchAll} style={{ marginLeft: 4 }}>↻ 새로고침</button>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 15, color: "#0a2240", fontWeight: 700 }}>접수 현황</h2>
+          <div style={{ flex: 1 }} />
+          <button className="mini" onClick={fetchAll} disabled={fetching}>↻ 새로고침</button>
+        </div>
+        <div className="kpi-row">
+          {([
+            { k: "submitted", label: "제출됨", color: "#b45309" },
+            { k: "approved", label: "승인완료", color: "#15803d" },
+            { k: "rejected", label: "반려됨", color: "#dc2626" },
+            { k: "completed", label: "완료", color: "#475569" },
+          ] as { k: PermitStatus; label: string; color: string }[]).map((c) => (
+            <button
+              key={c.k}
+              className={`kpi-card ${filter === c.k ? "on" : ""}`}
+              style={{ borderTopColor: c.color }}
+              onClick={() => setFilter(c.k)}
+              aria-pressed={filter === c.k}
+            >
+              <span className="kpi-num">{count(c.k)}</span>
+              <span className="kpi-label">{c.label}</span>
+            </button>
+          ))}
         </div>
 
         <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>

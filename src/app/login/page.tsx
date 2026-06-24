@@ -76,7 +76,7 @@ export default function LoginPage() {
       })}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(10,34,64,.72) 0%, rgba(0,51,119,.55) 100%)", zIndex: 1 }} />
 
-      <div style={{
+      <div className="login-card" style={{
         position: "relative", zIndex: 2,
         width: 380, padding: "36px 32px 28px",
         background: "rgba(255,255,255,0.12)",
