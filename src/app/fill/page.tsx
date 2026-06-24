@@ -104,7 +104,7 @@ function FillInner() {
     listTemplates().then(setTemplates).catch(() => {});
   }, [templateMode]);
 
-  if (!loaded || !cloudLoaded) return <div style={{ padding: 24 }}>불러오는 중…</div>;
+  if (!loaded || !cloudLoaded) return <div className="loading"><span className="spinner" />불러오는 중…</div>;
 
   if (loadError) {
     return (
@@ -617,7 +617,7 @@ function FillInner() {
 
 export default function FillPage() {
   return (
-    <Suspense fallback={<div style={{ padding: 24 }}>불러오는 중…</div>}>
+    <Suspense fallback={<div className="loading"><span className="spinner" />불러오는 중…</div>}>
       <FillInner />
     </Suspense>
   );

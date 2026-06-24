@@ -122,7 +122,7 @@ export default function AdminPage() {
     return true;
   });
 
-  if (loading || !user) return <div style={{ padding: 24 }}>불러오는 중…</div>;
+  if (loading || !user) return <div className="loading"><span className="spinner" />불러오는 중…</div>;
 
   return (
     <div className="layout">
@@ -182,7 +182,7 @@ export default function AdminPage() {
         </div>
 
         {fetching ? (
-          <div style={{ padding: 32, textAlign: "center", color: "#94a3b8" }}>불러오는 중…</div>
+          <div className="loading"><span className="spinner" />불러오는 중…</div>
         ) : loadError ? (
           <div style={{ padding: 32, textAlign: "center", color: "#b91c1c" }}>
             목록을 불러오지 못했습니다.
@@ -191,7 +191,7 @@ export default function AdminPage() {
             </div>
           </div>
         ) : filtered.length === 0 ? (
-          <div style={{ padding: 32, textAlign: "center", color: "#94a3b8" }}>해당 항목이 없습니다.</div>
+          <div className="empty-state">해당 항목이 없습니다.</div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table className="adm-table">

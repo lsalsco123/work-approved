@@ -15,5 +15,5 @@ export default function Home() {
     }
   }, [user, loading, router]);
 
-  return <div style={{ padding: 24, color: "#64748b" }}>불러오는 중…</div>;
+  return <div className="loading"><span className="spinner" />불러오는 중…</div>;
 }

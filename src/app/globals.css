@@ -147,11 +147,12 @@ body {
 /* Status / stat badges */
 .status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; color: #fff; }
 .stat-badge   { display: inline-block; padding: 3px 10px; border-radius: 5px; font-size: 12px; font-weight: 700; color: #fff; }
-.badge-draft     { background: #94a3b8; }
-.badge-submitted { background: #f59e0b; }
-.badge-approved  { background: #22c55e; }
-.badge-rejected  { background: #ef4444; }
-.badge-completed { background: #64748b; }
+/* 대비(AA): 흰 텍스트 기준 4.5:1 충족하도록 더 진한 톤 */
+.badge-draft     { background: #64748b; }
+.badge-submitted { background: #b45309; }
+.badge-approved  { background: #15803d; }
+.badge-rejected  { background: #dc2626; }
+.badge-completed { background: #475569; }
 .mini.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
 
 /* ===== UX 보강 (2026-06 전체 개선) ===== */
@@ -204,6 +205,38 @@ select.inp {
   .inp { padding: 9px 10px; font-size: 15px; } /* iOS 확대 방지(>=16 권장이나 15로 절충) */
   .adm-table { font-size: 12px; }
   .adm-table th, .adm-table td { padding: 7px 6px; }
+}
+
+/* ===== 디자인 정제 (ui-ux-pro-max 기준) ===== */
+:root {
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
+  --radius: 8px; --radius-sm: 6px;
+  --fl-hint: #6b7280; /* 힌트 텍스트 대비 향상 (AA) */
+}
+html { scroll-behavior: smooth; }
+.fld-hint { color: var(--fl-hint); }
+
+/* 로딩 스피너 + 스켈레톤 (async 피드백) */
+.loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px 16px; color: var(--fl-muted); font-size: 14px; }
+.spinner { width: 18px; height: 18px; border: 2px solid #cbd5e1; border-top-color: var(--fl-primary); border-radius: 50%; animation: spin .7s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.skeleton { background: linear-gradient(90deg,#eef2f7 25%,#e2e8f0 37%,#eef2f7 63%); background-size: 400% 100%; animation: sk 1.2s ease infinite; border-radius: 6px; }
+@keyframes sk { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+/* 빈 상태 */
+.empty-state { padding: 40px 16px; text-align: center; color: #94a3b8; font-size: 14px; }
+
+/* 관리자 테이블 가독성: 줄무늬 + 또렷한 본문 + hover */
+.adm-table tbody tr:nth-child(even) td { background: #fbfcfe; }
+.adm-table tbody tr:hover td { background: #eff4fb; }
+.adm-table td { color: #1f2d3d; }
+
+/* 모션 최소화 선호 존중 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important; scroll-behavior: auto !important;
+  }
 }
 
 /* ===== Print ===== */
