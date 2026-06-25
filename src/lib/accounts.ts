@@ -4,11 +4,16 @@ import { doc, setDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { auth, db, functions } from "./firebase";
 
+export type ManagerKind = "" | "requester" | "safety" | "factory";
+
 export interface CompanyAccount {
   uid: string;
   email: string;
   company: string;
   status: "pending" | "active" | "blocked";
+  role: "guest" | "manager";
+  managerKind: ManagerKind;
+  managerName: string;
   emailVerified: boolean;
   disabled: boolean;
   createdAt?: string | null;
@@ -63,4 +68,11 @@ export async function adminSetBlocked(uid: string, blocked: boolean): Promise<vo
 export async function adminSetPassword(uid: string, password: string): Promise<void> {
   if (password.length < 6) throw new Error("비밀번호는 6자 이상이어야 합니다.");
   await httpsCallable(functions, "adminSetPassword")({ uid, password });
+}
+
+// 역할 분류: 업체(guest) / 관리자(manager). 관리자면 kind(requester/safety/factory)+이름 지정.
+export async function adminSetRole(
+  uid: string, role: "guest" | "manager", managerKind: ManagerKind = "", managerName = "",
+): Promise<void> {
+  await httpsCallable(functions, "adminSetRole")({ uid, role, managerKind, managerName });
 }

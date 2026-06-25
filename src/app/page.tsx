@@ -11,6 +11,7 @@ export default function Home() {
     if (!loading) {
       if (!user) router.replace("/login");
       else if (user.role === "admin") router.replace("/admin");
+      else if (user.role === "manager") router.replace("/manager");
       else router.replace("/my");
     }
   }, [user, loading, router]);

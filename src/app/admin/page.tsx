@@ -6,7 +6,8 @@ import {
   listAllPermits, PermitRecord, PermitStatus,
 } from "@/lib/permits";
 import { listTemplates, deleteTemplate, createTemplate, PermitTemplate } from "@/lib/templates";
-import { listCompanyAccounts, adminApprove, adminSetBlocked, adminSetPassword, sendResetEmail, CompanyAccount } from "@/lib/accounts";
+import { listCompanyAccounts, adminApprove, adminSetBlocked, adminSetPassword, adminSetRole, sendResetEmail, CompanyAccount } from "@/lib/accounts";
+import { MANAGERS } from "@/lib/managers";
 import { DEFAULT_TEMPLATES } from "@/lib/samples";
 import { listJsaRefs, getJsaRef, saveJsaRef, deleteJsaRef } from "@/lib/jsaRefs";
 import { WORK_TYPES } from "@/lib/form";
@@ -125,6 +126,30 @@ export default function AdminPage() {
   const onResetEmail = (a: CompanyAccount) =>
     run(a.uid, () => sendResetEmail(a.email), `${a.email} 로 비밀번호 재설정 메일을 보냈습니다.`);
 
+  // 역할 분류: 업체 / 관리자(담당자·환경안전·공장장)
+  const roleValue = (a: CompanyAccount) =>
+    a.role !== "manager" ? "guest"
+      : a.managerKind === "safety" ? "safety"
+        : a.managerKind === "factory" ? "factory"
+          : `req:${a.managerName}`;
+  const onSetRole = (a: CompanyAccount, v: string) => {
+    if (v === roleValue(a)) return;
+    if (v === "guest") return run(a.uid, () => adminSetRole(a.uid, "guest"), "업체로 변경했습니다.");
+    if (v === "safety") return run(a.uid, () => adminSetRole(a.uid, "manager", "safety", "박세현"), "환경안전 관리자로 지정했습니다.");
+    if (v === "factory") return run(a.uid, () => adminSetRole(a.uid, "manager", "factory", "이태훈"), "공장장으로 지정했습니다.");
+    if (v.startsWith("req:")) return run(a.uid, () => adminSetRole(a.uid, "manager", "requester", v.slice(4)), "담당자로 지정했습니다.");
+  };
+  const RoleSelect = ({ a }: { a: CompanyAccount }) => (
+    <select className="inp" style={{ width: 150, fontSize: 12 }} value={roleValue(a)} disabled={busyUid === a.uid} onChange={(e) => onSetRole(a, e.target.value)}>
+      <option value="guest">업체</option>
+      <option value="safety">관리자·환경안전</option>
+      <option value="factory">관리자·공장장</option>
+      <optgroup label="관리자·담당자">
+        {MANAGERS.map((m) => <option key={m.name} value={`req:${m.name}`}>{m.name} ({m.dept})</option>)}
+      </optgroup>
+    </select>
+  );
+
   const pending = accounts.filter((a) => a.status === "pending");
   const others = accounts.filter((a) => a.status !== "pending");
 
@@ -192,7 +217,7 @@ export default function AdminPage() {
         <div className="panel">
           <div className="panel-head">
             <span className="panel-title" style={{ color: "#0369a1" }}>업체 계정 관리</span>
-            <span className="panel-sub">업체가 직접 회원가입합니다. 관리자는 승인·차단·비밀번호만 관리합니다.</span>
+            <span className="panel-sub">업체/관리자 모두 회원가입 후, 여기서 역할(업체·관리자) 분류 및 승인·차단·비밀번호를 관리합니다.</span>
             <div className="grow" />
             <button className="mini" onClick={fetchAccounts} disabled={acctLoading}>↻ 새로고침</button>
           </div>
@@ -210,6 +235,7 @@ export default function AdminPage() {
                       <span className="lead">{a.company || "(업체명 없음)"}</span>
                       <span className="meta">{a.email}</span>
                       <span className={`chip ${a.emailVerified ? "chip-approved" : "chip-submitted"}`}>{a.emailVerified ? "이메일 인증됨" : "이메일 미인증"}</span>
+                      <RoleSelect a={a} />
                     </div>
                     <div className="acct-actions">
                       <button className="mini btn-approve" disabled={busyUid === a.uid || !a.emailVerified} title={a.emailVerified ? "" : "이메일 인증 후 승인 가능"} onClick={() => onApprove(a)}>승인</button>
@@ -235,6 +261,7 @@ export default function AdminPage() {
                     <span className="meta">{a.email}</span>
                     <span className={`chip chip-${a.status === "blocked" ? "rejected" : "approved"}`}>{a.status === "blocked" ? "차단됨" : "활성"}</span>
                     {!a.emailVerified && <span className="chip chip-submitted">이메일 미인증</span>}
+                    <RoleSelect a={a} />
                   </div>
                   <div className="acct-actions">
                     <button className="mini" disabled={busyUid === a.uid} onClick={() => onSetPassword(a)}>비번 변경</button>

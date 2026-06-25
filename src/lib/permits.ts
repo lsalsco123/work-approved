@@ -87,3 +87,26 @@ export async function listAllPermits(max = 1000): Promise<PermitRecord[]> {
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PermitRecord));
 }
+
+// 관리자(결재라인) 본인 관련 건. requester=본인이 담당자인 건만 / safety·factory=전체(초안 제외).
+// requester 는 단일 equality 쿼리(복합 인덱스 불필요) 후 클라이언트 정렬.
+export async function listChainPermits(
+  managerKind: string, managerName: string, max = 1000,
+): Promise<PermitRecord[]> {
+  let docs;
+  if (managerKind === "requester") {
+    const q = query(collection(db, COL), where("data.manager", "==", managerName), limit(max));
+    docs = (await getDocs(q)).docs;
+  } else {
+    const q = query(collection(db, COL), orderBy("createdAt", "desc"), limit(max));
+    docs = (await getDocs(q)).docs;
+  }
+  return docs
+    .map((d) => ({ id: d.id, ...d.data() } as PermitRecord))
+    .filter((p) => p.status !== "draft")
+    .sort((a, b) => {
+      const ta = (a.submittedAt as { seconds?: number })?.seconds ?? 0;
+      const tb = (b.submittedAt as { seconds?: number })?.seconds ?? 0;
+      return tb - ta;
+    });
+}

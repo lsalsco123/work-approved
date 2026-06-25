@@ -13,6 +13,23 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'active') == 'active';
     }
 
+    function myUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    // 관리자(manager)가 이 permit 의 결재 라인에 속하는가.
+    //  - requester: 자신이 담당자(data.manager)인 건
+    //  - safety/factory: 결재 단계 전담이라 모든 건 조회
+    function isChainManager(permit) {
+      return request.auth != null
+        && myUser().get('role', '') == 'manager'
+        && (
+          myUser().get('managerKind', '') == 'safety'
+          || myUser().get('managerKind', '') == 'factory'
+          || (myUser().get('managerKind', '') == 'requester'
+              && myUser().get('managerName', '') == permit.data.get('data', {}).get('manager', ''))
+        );
+    }
+
     // 사용자 프로필
     match /users/{uid} {
       function isSelf() { return request.auth != null && request.auth.uid == uid; }
@@ -36,7 +53,8 @@ service cloud.firestore {
         return request.auth != null && resource.data.createdBy == request.auth.uid;
       }
 
-      allow read: if isAdmin() || isOwner();
+      allow read: if isAdmin() || isOwner()
+        || (isChainManager(resource) && resource.data.status != 'draft');
 
       // 생성: 본인 소유 + 최초 상태는 draft 로 고정 + 승인된 활성 계정만
       allow create: if request.auth != null

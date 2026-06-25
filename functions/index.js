@@ -42,14 +42,14 @@ function requireUid(data) {
   return uid;
 }
 
-// 업체 계정 목록 — Firestore(users role==guest) + Auth(이메일인증/차단여부) 병합.
+// 계정 목록 — 업체(guest)+관리자(manager). 시스템관리자(admin)는 콘솔 관리라 제외.
 exports.adminListAccounts = onCall(async (request) => {
   await assertAdmin(request);
-  const snap = await db().collection("users")
-      .where("role", "==", "guest").get();
+  const snap = await db().collection("users").get();
   const out = [];
   for (const docSnap of snap.docs) {
     const d = docSnap.data();
+    if (d.role === "admin") continue;
     let emailVerified = false;
     let disabled = false;
     let authEmail = d.email || "";
@@ -66,6 +66,9 @@ exports.adminListAccounts = onCall(async (request) => {
       email: authEmail,
       company: d.company || "",
       status: d.status || "active", // legacy(상태 없음)는 active 취급
+      role: d.role || "guest",
+      managerKind: d.managerKind || "",
+      managerName: d.managerName || "",
       emailVerified,
       disabled,
       createdAt: d.createdAt || null,
@@ -114,4 +117,38 @@ exports.adminSetPassword = onCall(async (request) => {
   }
   await auth().updateUser(uid, {password});
   return {ok: true};
+});
+
+/**
+ * 계정 역할 분류: 업체(guest) / 관리자(manager).
+ * 관리자는 managerKind(requester=담당자 / safety=환경안전 / factory=공장장) + managerName 지정.
+ * 시스템관리자(admin)는 콘솔 전용 — 이 함수로 만들거나 바꿀 수 없다.
+ */
+exports.adminSetRole = onCall(async (request) => {
+  await assertAdmin(request);
+  const uid = requireUid(request.data);
+  const role = String((request.data && request.data.role) || "");
+  if (role !== "guest" && role !== "manager") {
+    throw new HttpsError("invalid-argument", "role 은 guest/manager 만 허용합니다.");
+  }
+  const ref = db().collection("users").doc(uid);
+  const snap = await ref.get();
+  if (snap.exists && snap.data().role === "admin") {
+    throw new HttpsError("permission-denied", "시스템관리자 계정은 변경할 수 없습니다.");
+  }
+  const patch = {role, managerKind: "", managerName: ""};
+  if (role === "manager") {
+    const d = request.data || {};
+    const kind = String(d.managerKind || "requester");
+    if (!["requester", "safety", "factory"].includes(kind)) {
+      throw new HttpsError("invalid-argument", "managerKind 가 올바르지 않습니다.");
+    }
+    patch.managerKind = kind;
+    patch.managerName = String(d.managerName || "").trim();
+    if (kind === "requester" && !patch.managerName) {
+      throw new HttpsError("invalid-argument", "담당자는 담당자명을 지정해야 합니다.");
+    }
+  }
+  await ref.set(patch, {merge: true});
+  return {ok: true, ...patch};
 });

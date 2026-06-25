@@ -20,7 +20,7 @@ export default function AccessGate({ children }: { children: React.ReactNode }) 
   if (loading || !user) {
     return <div className="loading"><span className="spinner" />불러오는 중…</div>;
   }
-  if (user.role === "admin") return <>{children}</>;
+  if (user.role !== "guest") return <>{children}</>; // 관리자/시스템관리자는 게이트 면제
 
   const Shell = (inner: React.ReactNode) => (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "#f1f5f9" }}>

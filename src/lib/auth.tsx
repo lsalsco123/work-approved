@@ -9,8 +9,9 @@ import {
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
-export type UserRole = "guest" | "admin";
+export type UserRole = "guest" | "manager" | "admin"; // admin = 시스템관리자
 export type AccountStatus = "pending" | "active" | "blocked";
+export type ManagerKind = "" | "requester" | "safety" | "factory";
 
 export interface AuthUser {
   uid: string;
@@ -19,6 +20,8 @@ export interface AuthUser {
   company: string;
   status: AccountStatus;      // legacy(상태 없음)는 active 로 승격해 호환
   emailVerified: boolean;
+  managerKind: ManagerKind;   // role=manager 일 때: requester/safety/factory
+  managerName: string;        // role=manager 일 때 담당자명(requester) 등
 }
 
 interface AuthCtx {
@@ -51,16 +54,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let role: UserRole = "guest";
     let company = "";
     let status: AccountStatus = "active";
+    let managerKind: ManagerKind = "";
+    let managerName = "";
     try {
       const snap = await Promise.race([
         getDoc(doc(db, "users", fbUser.uid)),
         new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 3000)),
       ]);
       const d = (snap as Awaited<ReturnType<typeof getDoc>>).data() as
-        { role?: UserRole; company?: string; status?: AccountStatus } | undefined;
+        { role?: UserRole; company?: string; status?: AccountStatus; managerKind?: ManagerKind; managerName?: string } | undefined;
       role = d?.role ?? "guest";
       company = d?.company ?? "";
       status = d?.status ?? "active"; // 상태 필드 없는 legacy 계정은 active 취급
+      managerKind = d?.managerKind ?? "";
+      managerName = d?.managerName ?? "";
     } catch { /* 프로필 조회 실패 시 최소 정보로 진행 */ }
     return {
       uid: fbUser.uid,
@@ -69,6 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       company,
       status,
       emailVerified: fbUser.emailVerified,
+      managerKind,
+      managerName,
     };
   };
 
