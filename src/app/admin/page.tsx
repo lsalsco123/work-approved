@@ -3,10 +3,10 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import {
-  listAllPermits, approvePermit, rejectPermit, completePermit,
-  PermitRecord, PermitStatus,
+  listAllPermits, PermitRecord, PermitStatus,
 } from "@/lib/permits";
 import { listTemplates, deleteTemplate, createTemplate, PermitTemplate } from "@/lib/templates";
+import { createCompanyAccount, listCompanyAccounts, CompanyAccount } from "@/lib/accounts";
 import { DEFAULT_TEMPLATES } from "@/lib/samples";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
@@ -82,33 +82,37 @@ export default function AdminPage() {
     finally { setTplBusy(false); }
   };
 
-  const [busyId, setBusyId] = useState<string | null>(null);
+  // 업체(게스트) 계정 관리
+  const [accounts, setAccounts] = useState<CompanyAccount[]>([]);
+  const [acctBusy, setAcctBusy] = useState(false);
+  const [showAcctForm, setShowAcctForm] = useState(false);
+  const [acctCompany, setAcctCompany] = useState("");
+  const [acctId, setAcctId] = useState("");
+  const [acctPw, setAcctPw] = useState("");
 
-  const doApprove = async (p: PermitRecord) => {
-    if (!user) return;
-    if (!window.confirm(`[${p.company || p.createdByEmail}] 허가서를 승인하시겠습니까?`)) return;
-    setBusyId(p.id);
-    try { await approvePermit(p.id, user.email); await fetchAll(); }
-    catch (e) { alert("승인 실패: " + e); }
-    finally { setBusyId(null); }
+  const fetchAccounts = async () => {
+    try { setAccounts(await listCompanyAccounts()); }
+    catch (e) { console.error("업체 계정 조회 실패:", e); }
   };
 
-  const doReject = async (p: PermitRecord) => {
-    if (!user) return;
-    const note = window.prompt("반려 사유를 입력하세요 (작성자에게 표시됩니다):", "");
-    if (note === null) return;
-    setBusyId(p.id);
-    try { await rejectPermit(p.id, note.trim()); await fetchAll(); }
-    catch (e) { alert("반려 실패: " + e); }
-    finally { setBusyId(null); }
-  };
+  useEffect(() => { if (user?.role === "admin") fetchAccounts(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const doComplete = async (p: PermitRecord) => {
-    if (!window.confirm(`[${p.company || p.createdByEmail}] 작업완료 처리하시겠습니까?`)) return;
-    setBusyId(p.id);
-    try { await completePermit(p.id); await fetchAll(); }
-    catch (e) { alert("완료 처리 실패: " + e); }
-    finally { setBusyId(null); }
+  const handleCreateAccount = async () => {
+    if (acctBusy) return;
+    setAcctBusy(true);
+    try {
+      await createCompanyAccount(acctId, acctCompany, acctPw);
+      alert(`업체 계정이 생성되었습니다.\n업체: ${acctCompany}\n아이디: ${acctId}`);
+      setAcctCompany(""); setAcctId(""); setAcctPw(""); setShowAcctForm(false);
+      await fetchAccounts();
+    } catch (e: unknown) {
+      const code = (e as { code?: string })?.code ?? "";
+      const msg = code === "auth/email-already-in-use" ? "이미 존재하는 아이디입니다."
+        : code === "auth/weak-password" ? "비밀번호는 6자 이상이어야 합니다."
+        : code === "auth/invalid-email" ? "사용할 수 없는 아이디입니다."
+        : (e as Error)?.message ?? String(e);
+      alert("계정 생성 실패: " + msg);
+    } finally { setAcctBusy(false); }
   };
 
   const count = (s: PermitStatus) => permits.filter((p) => p.status === s).length;
@@ -134,12 +138,55 @@ export default function AdminPage() {
         <button onClick={() => { logout(); router.replace("/login"); }}>로그아웃</button>
       </header>
 
-      <div style={{ padding: 16, maxWidth: 1280, margin: "0 auto" }}>
-        <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 16, background: "#faf5ff" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-            <strong style={{ fontSize: 14, color: "#6d28d9" }}>예시 양식 관리</strong>
-            <span style={{ fontSize: 12, color: "#64748b" }}>외주업체가 작성 화면에서 불러오는 예시입니다.</span>
-            <div style={{ flex: 1 }} />
+      <div className="page">
+        {/* 업체(외주) 계정 관리 */}
+        <div className="panel">
+          <div className="panel-head">
+            <span className="panel-title" style={{ color: "#0369a1" }}>업체 계정 관리</span>
+            <span className="panel-sub">외주업체별로 개별 로그인 계정을 발급합니다. (업체는 자기 허가서만 조회·작성)</span>
+            <div className="grow" />
+            <button className="mini" onClick={() => setShowAcctForm((s) => !s)}>{showAcctForm ? "닫기" : "+ 업체 계정 생성"}</button>
+          </div>
+
+          {showAcctForm && (
+            <div className="form-row">
+              <label className="field">
+                <span>업체명</span>
+                <input className="inp" style={{ width: 180 }} value={acctCompany} onChange={(e) => setAcctCompany(e.target.value)} placeholder="예: 신우기전" />
+              </label>
+              <label className="field">
+                <span>로그인 아이디</span>
+                <input className="inp" style={{ width: 160 }} value={acctId} onChange={(e) => setAcctId(e.target.value)} placeholder="예: sinwoo" autoComplete="off" />
+              </label>
+              <label className="field">
+                <span>초기 비밀번호 (6자 이상)</span>
+                <input className="inp" style={{ width: 160 }} type="text" value={acctPw} onChange={(e) => setAcctPw(e.target.value)} placeholder="업체에 전달할 비밀번호" autoComplete="new-password" />
+              </label>
+              <button className="mini btn-accent" disabled={acctBusy} onClick={handleCreateAccount}>
+                {acctBusy ? "생성 중…" : "계정 생성"}
+              </button>
+            </div>
+          )}
+
+          {accounts.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>아직 발급된 업체 계정이 없습니다. “+ 업체 계정 생성”으로 추가하세요.</p>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {accounts.map((a) => (
+                <div key={a.uid} className="tagcard">
+                  <span className="lead">{a.company || "(업체명 없음)"}</span>
+                  <span className="meta">아이디 {a.loginId}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="panel">
+          <div className="panel-head">
+            <span className="panel-title" style={{ color: "#6d28d9" }}>예시 양식 관리</span>
+            <span className="panel-sub">외주업체가 작성 화면에서 불러오는 예시입니다.</span>
+            <div className="grow" />
             <button className="mini" onClick={() => router.push("/fill?templateNew=1")}>+ 새 예시 양식</button>
             {templates.length === 0 && (
               <button className="mini" disabled={tplBusy} onClick={seedDefaults}>{tplBusy ? "생성 중…" : "기본 예시 생성"}</button>
@@ -152,8 +199,8 @@ export default function AdminPage() {
           ) : (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {templates.map((t) => (
-                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, border: "1px solid #e9d5ff", borderRadius: 8, padding: "6px 10px", background: "#fff" }}>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{t.name}</span>
+                <div key={t.id} className="tagcard">
+                  <span className="lead">{t.name}</span>
                   <button className="mini" disabled={tplBusy} onClick={() => router.push(`/fill?template=${t.id}`)}>수정</button>
                   <button className="mini danger" disabled={tplBusy} onClick={() => removeTemplate(t)}>삭제</button>
                 </div>
@@ -162,9 +209,9 @@ export default function AdminPage() {
           )}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-          <h2 style={{ margin: 0, fontSize: 15, color: "#0a2240", fontWeight: 700 }}>접수 현황</h2>
-          <div style={{ flex: 1 }} />
+        <div className="page-head">
+          <h2>접수 현황</h2>
+          <div className="grow" />
           <button className="mini" onClick={fetchAll} disabled={fetching}>↻ 새로고침</button>
         </div>
         <div className="kpi-row">
@@ -222,39 +269,30 @@ export default function AdminPage() {
                   <th style={{ width: 100 }}>작업일자</th>
                   <th style={{ width: 90 }}>상태</th>
                   <th style={{ width: 110 }}>제출일시</th>
-                  <th style={{ width: 100 }}>보기</th>
-                  <th style={{ width: 150 }}>처리</th>
+                  <th style={{ width: 130 }}>처리</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((p) => (
                   <tr key={p.id}>
-                    <td style={{ fontFamily: "monospace", fontSize: 12, color: "#64748b" }}>{p.id.slice(0, 8)}</td>
-                    <td style={{ fontWeight: 600 }}>{p.company || p.createdByEmail}</td>
-                    <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <td data-label="번호" style={{ fontFamily: "monospace", fontSize: 12, color: "#64748b" }}>{p.id.slice(0, 8)}</td>
+                    <td data-label="업체명" style={{ fontWeight: 600 }}>{p.company || p.createdByEmail}</td>
+                    <td data-label="작업내용" className="cell-ellipsis" style={{ maxWidth: 260 }}>
                       {p.data.workContent || "-"}
                     </td>
-                    <td>{p.data.workDate || "-"}</td>
-                    <td>
-                      <span className={`status-badge badge-${p.status}`}>{STATUS_LABEL[p.status]}</span>
+                    <td data-label="작업일자">{p.data.workDate || "-"}</td>
+                    <td data-label="상태">
+                      <span className={`chip chip-${p.status}`}>{STATUS_LABEL[p.status]}</span>
                     </td>
-                    <td style={{ fontSize: 12 }}>{tsToStr(p.submittedAt)}</td>
-                    <td>
-                      <a className="mini" href={`/fill?id=${p.id}`} target="_blank" rel="noreferrer">보기/출력</a>
-                    </td>
-                    <td>
-                      {busyId === p.id ? (
-                        <span style={{ fontSize: 12, color: "#94a3b8" }}>처리 중…</span>
-                      ) : p.status === "submitted" ? (
-                        <div style={{ display: "flex", gap: 4 }}>
-                          <button className="mini" style={{ background: "#16a34a", color: "#fff" }} onClick={() => doApprove(p)}>승인</button>
-                          <button className="mini" style={{ background: "#ef4444", color: "#fff" }} onClick={() => doReject(p)}>반려</button>
-                        </div>
-                      ) : p.status === "approved" ? (
-                        <button className="mini" onClick={() => doComplete(p)}>작업완료</button>
-                      ) : (
-                        <span style={{ fontSize: 12, color: "#cbd5e1" }}>-</span>
-                      )}
+                    <td data-label="제출일시" style={{ fontSize: 12 }}>{tsToStr(p.submittedAt)}</td>
+                    <td className="act">
+                      <button
+                        className="mini"
+                        onClick={() => router.push(`/fill?id=${p.id}`)}
+                        style={p.status === "submitted" ? { background: "#0a2240", color: "#fff" } : undefined}
+                      >
+                        {p.status === "submitted" ? "검토/처리" : "보기/출력"}
+                      </button>
                     </td>
                   </tr>
                 ))}

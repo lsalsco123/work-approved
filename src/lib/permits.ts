@@ -82,7 +82,7 @@ export async function listMyPermits(uid: string): Promise<PermitRecord[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PermitRecord));
 }
 
-export async function listAllPermits(max = 500): Promise<PermitRecord[]> {
+export async function listAllPermits(max = 1000): Promise<PermitRecord[]> {
   const q = query(collection(db, COL), orderBy("createdAt", "desc"), limit(max));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PermitRecord));

@@ -143,6 +143,33 @@ body {
 .adm-table td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
 .adm-table tr:last-child td { border-bottom: none; }
 .adm-table tr:hover td { background: #f8fafc; }
+.cell-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Narrow screens: collapse data tables into stacked cards (row = card, td = labeled line) */
+@media (max-width: 560px) {
+  .adm-table { box-shadow: none; background: transparent; border-radius: 0; }
+  .adm-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .adm-table, .adm-table tbody, .adm-table tr, .adm-table td { display: block; width: 100%; }
+  .adm-table tr {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+    box-shadow: var(--fl-shadow); margin-bottom: 10px; padding: 4px 12px;
+  }
+  .adm-table tr:hover td { background: transparent; }
+  .adm-table td {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 8px 0; border-bottom: 1px solid #f1f5f9; text-align: right;
+    max-width: none !important;
+  }
+  .adm-table tr td:last-child { border-bottom: none; }
+  .adm-table td.cell-ellipsis { white-space: normal; overflow: visible; text-overflow: clip; }
+  .adm-table td::before {
+    content: attr(data-label); flex: 0 0 auto; text-align: left;
+    font-size: 12px; font-weight: 600; color: #64748b;
+  }
+  .adm-table td.act { padding-top: 10px; }
+  .adm-table td.act::before { content: none; }
+  .adm-table td.act .mini, .adm-table td.act button { width: 100%; }
+}
 
 /* Status / stat badges */
 .status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; color: #fff; }
@@ -256,6 +283,83 @@ html { scroll-behavior: smooth; }
     transition-duration: .001ms !important; scroll-behavior: auto !important;
   }
 }
+
+/* ===== 흐름 개편 폴리시 (2026-06-25): 칩 / 노트 / 패널 / 시맨틱 버튼 ===== */
+
+/* 페이지 컨텐츠 래퍼 */
+.page        { max-width: 1280px; margin: 0 auto; padding: 16px; }
+.page-narrow { max-width: 980px;  margin: 0 auto; padding: 16px; }
+
+/* 섹션 헤더(대시보드/관리자) */
+.page-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.page-head h2 { margin: 0; font-size: 15px; color: var(--fl-navy-900); font-weight: 700; letter-spacing: -.01em; }
+.page-head .sub { font-size: 12px; color: var(--fl-muted); }
+.page-head .grow { flex: 1; }
+
+/* 상태 칩 — 토널(부드러운 배경 + 진한 글자 + 점). 리스트 가독성 ↑ */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px 3px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; line-height: 1.5;
+  border: 1px solid transparent; white-space: nowrap;
+}
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chip-draft     { color: #475569; background: #f1f5f9; border-color: #e2e8f0; }
+.chip-submitted { color: #b45309; background: #fff7ed; border-color: #fed7aa; }
+.chip-approved  { color: #15803d; background: #f0fdf4; border-color: #bbf7d0; }
+.chip-rejected  { color: #dc2626; background: #fef2f2; border-color: #fecaca; }
+.chip-completed { color: #475569; background: #eef2f6; border-color: #dbe2ea; }
+
+/* 인라인 노트(둥근 안내 카드) — 대시보드/패널용 */
+.note {
+  display: flex; gap: 8px; align-items: flex-start;
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  font-size: 13px; border: 1px solid; line-height: 1.5;
+}
+.note strong { font-weight: 700; }
+.note-warn    { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.note-info    { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+.note-error   { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.note-success { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.note .ico { flex: none; font-size: 14px; line-height: 1.4; }
+
+/* 전체폭 배너(상단바 아래 바) */
+.banner { padding: 11px 20px; font-size: 13px; border-bottom: 1px solid; line-height: 1.5; }
+.banner-warn    { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.banner-success { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.banner-error   { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+
+/* 패널(카드형 섹션) — 업체계정/예시양식/관리자확인 */
+.panel { background: #fff; border: 1px solid var(--fl-border); border-radius: var(--radius); box-shadow: var(--fl-shadow); padding: 16px; margin-bottom: 16px; }
+.panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.panel-title { font-size: 14px; font-weight: 700; color: var(--fl-navy-900); }
+.panel-sub { font-size: 12px; color: var(--fl-muted); }
+.panel-head .grow { flex: 1; }
+
+/* 폼 필드(라벨 스택) + 가로 폼 행 */
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field > span { font-size: 12px; font-weight: 600; color: #475569; }
+.form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: var(--radius-sm); margin-bottom: 12px; }
+
+/* 시맨틱 버튼(.mini 확장) — 승인/반려/완료/강조 */
+.mini.btn-approve { background: #16a34a; border-color: #16a34a; color: #fff; }
+.mini.btn-approve:hover:not(:disabled) { background: #15803d; border-color: #15803d; }
+.mini.btn-reject  { background: #fff; border-color: #fca5a5; color: #dc2626; }
+.mini.btn-reject:hover:not(:disabled) { background: #fef2f2; border-color: #ef4444; }
+.mini.btn-dark    { background: var(--fl-navy-900); border-color: var(--fl-navy-900); color: #fff; }
+.mini.btn-dark:hover:not(:disabled) { background: var(--fl-navy-800); border-color: var(--fl-navy-800); }
+.mini.btn-accent  { background: #0369a1; border-color: #0369a1; color: #fff; }
+.mini.btn-accent:hover:not(:disabled) { background: #075985; border-color: #075985; }
+
+/* 작은 태그 칩(업체계정/예시양식 목록 아이템) */
+.tagcard { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--fl-border); border-radius: var(--radius-sm); padding: 7px 12px; background: #fff; font-size: 13px; }
+.tagcard .lead { font-weight: 700; color: #1f2d3d; }
+.tagcard .meta { font-size: 12px; color: var(--fl-muted); }
+
+/* 빈 상태 강화 */
+.empty-rich { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 16px; text-align: center; color: #94a3b8; }
+.empty-rich .ico { width: 44px; height: 44px; opacity: .5; }
+.empty-rich .t { font-size: 14px; color: #64748b; font-weight: 600; }
 
 /* ===== Print ===== */
 @media print {

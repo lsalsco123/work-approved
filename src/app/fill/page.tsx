@@ -13,7 +13,7 @@ import {
 import SignaturePad from "@/components/SignaturePad";
 import { sampleGeneral } from "@/lib/samples";
 import { MANAGERS, SAFETY_REVIEWERS } from "@/lib/managers";
-import { savePermit, submitPermit, getPermit, saveAdminFields, PermitStatus } from "@/lib/permits";
+import { savePermit, submitPermit, getPermit, saveAdminFields, approvePermit, rejectPermit, completePermit, PermitStatus } from "@/lib/permits";
 import {
   listTemplates, getTemplate, createTemplate, updateTemplate, PermitTemplate,
 } from "@/lib/templates";
@@ -109,6 +109,13 @@ function FillInner() {
     if (!authLoading && !user) router.replace("/login");
   }, [authLoading, user, router]);
 
+  // 게스트 새 작성: 업체명이 비어 있으면 계정에 등록된 업체명으로 자동 채움
+  useEffect(() => {
+    if (!loaded || !user || user.role !== "guest") return;
+    if (cloudId || templateMode || !user.company) return;
+    setData((d) => (d.company ? d : { ...d, company: user.company }));
+  }, [loaded, user, cloudId, templateMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 인증 확인 중이거나 미로그인(리다이렉트 대기) 상태에서는 내부 UI를 렌더하지 않음
   if (authLoading || !user) return <div className="loading"><span className="spinner" />불러오는 중…</div>;
 
@@ -182,6 +189,7 @@ function FillInner() {
     try {
       await submitPermit(id);
       setPermitStatus("submitted");
+      let notifyOk = true;
       try {
         const token = await auth.currentUser?.getIdToken();
         const nr = await fetch("/api/notify", {
@@ -203,7 +211,7 @@ function FillInner() {
         });
         // 제출 자체는 성공(submitted 유지). 알림 메일 발송이 실패하면
         // 사용자에게 비차단 안내만 띄운다(흐름은 깨지 않음).
-        let notifyOk = nr.ok;
+        notifyOk = nr.ok;
         try {
           const nj = await nr.json();
           notifyOk = notifyOk && nj.ok !== false;
@@ -211,12 +219,15 @@ function FillInner() {
         } catch {
           notifyOk = false;
         }
-        if (!notifyOk) {
-          alert("제출은 완료되었으나 관리자 알림 메일 발송에 실패했습니다. 관리자에게 직접 알려주세요.");
-        }
       } catch (ne) {
         console.error("이메일 API 호출 실패:", ne);
-        alert("제출은 완료되었으나 관리자 알림 메일 발송에 실패했습니다. 관리자에게 직접 알려주세요.");
+        notifyOk = false;
+      }
+      // 제출 성공 피드백 (메일 발송 성공 여부에 따라 메시지 분기)
+      if (notifyOk) {
+        alert("작업허가서가 제출되었습니다. ✅\n관리자 검토 후 결과가 반영됩니다. '내 목록'에서 진행 상태를 확인할 수 있어요.");
+      } else {
+        alert("제출은 완료되었습니다. ✅\n다만 관리자 알림 메일 발송에 실패했으니 담당자에게 직접 알려주세요.");
       }
     } catch (e) {
       alert("제출 실패: " + e);
@@ -281,6 +292,48 @@ function FillInner() {
     finally { setSaving(false); }
   };
 
+  // 관리자 처리: 승인/반려/완료 — 같은 화면(상세)에서 일괄 수행
+  const handleApprove = async () => {
+    if (!permitId || !user) return;
+    // 검토자(환경안전) 미선택이면 승인 차단
+    if (!data.admin.review.name) { alert("검토자(환경안전)를 먼저 선택해주세요."); return; }
+    if (!window.confirm("이 작업허가서를 승인하시겠습니까?")) return;
+    setSaving(true);
+    try {
+      // 확인(●)·검토자 먼저 저장한 뒤 승인 처리
+      await saveAdminFields(permitId, data.confirmed, data.admin.review.name);
+      await approvePermit(permitId, user.email);
+      alert("승인되었습니다.");
+      router.push("/admin");
+    } catch (e) { alert("승인 실패: " + e); }
+    finally { setSaving(false); }
+  };
+  const handleReject = async () => {
+    if (!permitId) return;
+    const note = window.prompt("반려 사유를 입력하세요 (작성자에게 표시됩니다):", "");
+    if (note === null) return;
+    if (!note.trim()) { alert("반려 사유를 반드시 입력해야 합니다."); return; }
+    if (!window.confirm("이 작업허가서를 반려하시겠습니까?")) return;
+    setSaving(true);
+    try {
+      await rejectPermit(permitId, note.trim());
+      alert("반려되었습니다.");
+      router.push("/admin");
+    } catch (e) { alert("반려 실패: " + e); }
+    finally { setSaving(false); }
+  };
+  const handleComplete = async () => {
+    if (!permitId) return;
+    if (!window.confirm("작업완료 처리하시겠습니까?")) return;
+    setSaving(true);
+    try {
+      await completePermit(permitId);
+      alert("작업완료 처리되었습니다.");
+      router.push("/admin");
+    } catch (e) { alert("완료 처리 실패: " + e); }
+    finally { setSaving(false); }
+  };
+
   // 교육서약 참여자 (이름 + 직접 서명)
   const addSigner = () => setData((d) => ({ ...d, eduSigners: [...d.eduSigners, { name: "", sign: "" }] }));
   const updateSignerName = (i: number, name: string) =>
@@ -305,10 +358,8 @@ function FillInner() {
             관리자 · 예시 양식
           </span>
         )}
-        {!templateMode && statusInfo && (
-          <span style={{ fontSize: 12, padding: "3px 8px", borderRadius: 4, background: statusInfo.color, color: "#fff", fontWeight: 700 }}>
-            {statusInfo.text}
-          </span>
+        {!templateMode && statusInfo && permitStatus && (
+          <span className={`chip chip-${permitStatus}`}>{statusInfo.text}</span>
         )}
         <div className="spacer" />
         {user ? (
@@ -316,6 +367,9 @@ function FillInner() {
             <span style={{ fontSize: 12, opacity: 0.75, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</span>
             {!isGuest && (
               <button onClick={() => router.push("/admin")}>목록</button>
+            )}
+            {isGuest && !templateMode && (
+              <button onClick={() => router.push("/my")}>내 목록</button>
             )}
             <button onClick={() => { logout(); router.replace("/login"); }}>로그아웃</button>
           </>
@@ -351,13 +405,18 @@ function FillInner() {
       </header>
 
       {permitStatus === "rejected" && (
-        <div className="no-print" style={{ background: "#fef2f2", borderBottom: "1px solid #fecaca", padding: "12px 20px", color: "#991b1b", fontSize: 13 }}>
+        <div className="no-print banner banner-error">
           <strong>반려됨</strong> — 내용을 수정한 뒤 다시 제출하실 수 있습니다.
-          {adminNote && <div style={{ marginTop: 4, color: "#7f1d1d" }}>사유: {adminNote}</div>}
+          {adminNote && <div style={{ marginTop: 4 }}>사유: {adminNote}</div>}
+        </div>
+      )}
+      {permitStatus === "submitted" && isGuest && (
+        <div className="no-print banner banner-warn">
+          <strong>제출 완료</strong> — 관리자 검토를 기다려 주세요. 제출 후에는 수정할 수 없습니다.
         </div>
       )}
       {permitStatus === "approved" && (
-        <div className="no-print" style={{ background: "#f0fdf4", borderBottom: "1px solid #bbf7d0", padding: "12px 20px", color: "#166534", fontSize: 13 }}>
+        <div className="no-print banner banner-success">
           <strong>승인 완료</strong> — 인쇄/PDF로 출력하여 현장에 비치하세요.
         </div>
       )}
@@ -412,6 +471,36 @@ function FillInner() {
                     })}
                   </div>
                 )}
+
+                {/* 처리: 승인/반려/완료를 이 화면에서 일괄 수행 */}
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed #c7d2fe", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <strong style={{ fontSize: 13, color: "#3730a3" }}>처리</strong>
+                  <div style={{ flex: 1 }} />
+                  {permitStatus === "submitted" ? (
+                    <>
+                      {!data.admin.review.name && (
+                        <span className="note note-warn" style={{ padding: "4px 10px", fontSize: 12 }}>
+                          <span className="ico">🔒</span> 검토자를 선택하면 승인할 수 있어요
+                        </span>
+                      )}
+                      <button className="mini btn-reject" onClick={handleReject} disabled={saving}>반려</button>
+                      <button
+                        className="mini btn-approve"
+                        onClick={handleApprove}
+                        disabled={saving || !data.admin.review.name}
+                        title={!data.admin.review.name ? "검토자(환경안전)를 먼저 선택하세요" : ""}
+                      >
+                        {saving ? "처리 중…" : "승인"}
+                      </button>
+                    </>
+                  ) : permitStatus === "approved" ? (
+                    <button className="mini btn-dark" onClick={handleComplete} disabled={saving}>{saving ? "처리 중…" : "작업완료 처리"}</button>
+                  ) : (
+                    <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                      {permitStatus === "rejected" ? "반려된 허가서입니다." : permitStatus === "completed" ? "완료된 허가서입니다." : "임시저장 상태입니다."}
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })()}
