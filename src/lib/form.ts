@@ -263,8 +263,14 @@ export function buildOverlays(data: PermitData): Overlay[] {
   grp(RADIATION, data.radiation);
 
   // 보조 인원/텍스트
-  if (data.hotFireWatcher) push(txt("F63", `화재감시자 : ${data.hotFireWatcher}`, { fontPt: 6.5 }));
-  if (data.hotFireManager) push(txt("K63", `소방안전관리자 : ${data.hotFireManager}`, { fontPt: 6.5 }));
+  // 화기작업: 인쇄된 "화재감시자 :"/"소방안전관리자 :" 라벨 뒤에 값만 기입(이중 겹침 방지).
+  // 화재감시자=업체 입력값, 소방안전관리자=박세현 고정.
+  if (selWT("hot")) {
+    const fw = cell("F63");
+    if (data.hotFireWatcher) push(txt("F63", data.hotFireWatcher, { x: fw.x + fw.w * 0.45, w: fw.w * 0.28, align: "left", valign: "middle", fontPt: 6.5 }));
+    const fm = cell("K63");
+    push(txt("K63", "박세현", { x: fm.x + fm.w * 0.48, w: fm.w * 0.20, align: "left", valign: "middle", fontPt: 6.5 }));
+  }
   if (data.confinedWatcher) push(txt("G71", `감시인 : ${data.confinedWatcher}`, { fontPt: 6.5 }));
   if (data.electricalCutoffTime) push(txt("E77", `차단시간 : ${data.electricalCutoffTime}`, { fontPt: 6.5 }));
   if (data.electricalCutoffPerson) push(txt("I77", `차단인 : ${data.electricalCutoffPerson}`, { fontPt: 6.5 }));
@@ -297,8 +303,8 @@ export function buildOverlays(data: PermitData): Overlay[] {
 
   data.jsa.slice(0, 6).forEach((r, i) => {
     const rw = JSA_ROWS[i];
-    // 단계명 입력 시 A칸의 인쇄된 번호를 덮고 단계명 표기 (상단 정렬 — 위험요인/현재조치와 줄맞춤)
-    if (r.step) { const ab = cell(`A${rw}`); push(txt(`A${rw}`, r.step, { cover: true, align: "center", valign: "top", fontPt: 5.5, x: ab.x, w: ab.w })); }
+    // 단계명(작업종류) 표기: A칸의 인쇄 번호를 덮고 상하좌우 중앙정렬. cover 박스가 우측 컬럼 경계선을 덮지 않도록 폭 축소.
+    if (r.step) { const ab = cell(`A${rw}`); push(txt(`A${rw}`, r.step, { cover: true, align: "center", valign: "middle", fontPt: 5.5, x: ab.x + ab.w * 0.05, w: ab.w * 0.9 })); }
     if (r.hazard) {
       const b = cell(`B${rw}`);
       const yo = b.h * 0.06;
@@ -326,8 +332,9 @@ export function buildOverlays(data: PermitData): Overlay[] {
   const EDU_ROWS = [138, 140, 142, 144, 146, 148];
   data.eduSigners.slice(0, 18).forEach((s, i) => {
     const col = i % 3, rw = EDU_ROWS[Math.floor(i / 3)];
-    if (s.name) push(txt(`${EDU_COLS[col]}${rw}`, s.name, { align: "center", fontPt: 6.5 }));
-    if (s.sign) out.push(imgFit(cell(`${EDU_SIGN_COLS[col]}${rw}`), s.sign));
+    if (s.name) push(txt(`${EDU_COLS[col]}${rw}`, s.name, { align: "center", valign: "middle", fontPt: 6.5 }));
+    // 서명은 인쇄된 "(인)"(셀 우측)과 겹치지 않게 셀 좌측 ~60% 영역에만 배치
+    if (s.sign) { const sc = cell(`${EDU_SIGN_COLS[col]}${rw}`); out.push(imgFit({ ...sc, w: sc.w * 0.6 }, s.sign)); }
   });
   if (data.representativeSignName) push(nameVal("S150", data.representativeSignName));
   if (data.representativeSignDate) push(txt("X150", fmtKDate(data.representativeSignDate), { fontPt: 7 }));
