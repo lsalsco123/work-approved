@@ -19,6 +19,8 @@ const app = isClient && apiKey
   : null;
 
 export const auth = app ? getAuth(app) : ({} as ReturnType<typeof getAuth>);
+// Firebase 인증 메일(이메일 인증·비밀번호 재설정)을 한국어 기본 템플릿으로 발송
+if (app) auth.languageCode = "ko";
 export const db = app ? getFirestore(app, "default") : ({} as ReturnType<typeof getFirestore>);
 // Cloud Functions(admin SDK 백엔드) — 기본 리전 us-central1 (functions setGlobalOptions와 일치)
 export const functions = app ? getFunctions(app) : ({} as ReturnType<typeof getFunctions>);
