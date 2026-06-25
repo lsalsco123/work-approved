@@ -359,7 +359,7 @@ function FillInner() {
   const isGuest = user?.role !== "admin";
 
   return (
-    <div className="layout">
+    <div className="layout layout-split">
       <header className="topbar no-print">
         <img src="/ls_alsco_logo.png" alt="LS Alsco" className="topbar-logo" />
         <h1>{templateMode ? "예시 양식 편집" : "환경안전 작업허가서"}</h1>

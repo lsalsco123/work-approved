@@ -253,14 +253,15 @@ export function buildOverlays(data: PermitData): Overlay[] {
   // 작업별 안전조치
   const grp = (defs: { v: string; cell: string }[], sel: string[]) =>
     defs.forEach((x) => { if (sel.includes(x.v)) push(squareMark(x.cell)); });
-  grp(GENERAL, data.general);
-  grp(HOT, data.hot);
-  grp(CONFINED, data.confined);
-  grp(ELECTRICAL, data.electrical);
-  grp(ELEVATED, data.elevated);
-  grp(EXCAVATION, data.excavation);
-  grp(HEAVY, data.heavy);
-  grp(RADIATION, data.radiation);
+  // 선택한 작업형태의 체크만 출력 (작업형태 해제 시 잔여 체크 인쇄 방지)
+  if (selWT("general")) grp(GENERAL, data.general);
+  if (selWT("hot")) grp(HOT, data.hot);
+  if (selWT("confined")) grp(CONFINED, data.confined);
+  if (selWT("electrical")) grp(ELECTRICAL, data.electrical);
+  if (selWT("elevated")) grp(ELEVATED, data.elevated);
+  if (selWT("excavation")) grp(EXCAVATION, data.excavation);
+  if (selWT("heavy")) grp(HEAVY, data.heavy);
+  if (selWT("radiation")) grp(RADIATION, data.radiation);
 
   // 보조 인원/텍스트
   // 화기작업: 인쇄된 "화재감시자 :"/"소방안전관리자 :" 라벨 뒤에 값만 기입(이중 겹침 방지).
@@ -271,12 +272,12 @@ export function buildOverlays(data: PermitData): Overlay[] {
     const fm = cell("K63");
     push(txt("K63", "박세현", { x: fm.x + fm.w * 0.48, w: fm.w * 0.20, align: "left", valign: "middle", fontPt: 6.5 }));
   }
-  if (data.confinedWatcher) push(txt("G71", `감시인 : ${data.confinedWatcher}`, { fontPt: 6.5 }));
-  if (data.electricalCutoffTime) push(txt("E77", `차단시간 : ${data.electricalCutoffTime}`, { fontPt: 6.5 }));
-  if (data.electricalCutoffPerson) push(txt("I77", `차단인 : ${data.electricalCutoffPerson}`, { fontPt: 6.5 }));
-  if (data.excavationBuriedChecker) push(txt("G87", `매설확인자 : ${data.excavationBuriedChecker}`, { fontPt: 6.5 }));
-  if (data.heavySignaler) push(txt("U1", `신호수/유도자 : ${data.heavySignaler}`, { fontPt: 6.5 }));
-  if (data.heavyEquipType) push(txt("AA5", data.heavyEquipType, { fontPt: 6.5 }));
+  if (selWT("confined") && data.confinedWatcher) push(txt("G71", `감시인 : ${data.confinedWatcher}`, { fontPt: 6.5 }));
+  if (selWT("electrical") && data.electricalCutoffTime) push(txt("E77", `차단시간 : ${data.electricalCutoffTime}`, { fontPt: 6.5 }));
+  if (selWT("electrical") && data.electricalCutoffPerson) push(txt("I77", `차단인 : ${data.electricalCutoffPerson}`, { fontPt: 6.5 }));
+  if (selWT("excavation") && data.excavationBuriedChecker) push(txt("G87", `매설확인자 : ${data.excavationBuriedChecker}`, { fontPt: 6.5 }));
+  if (selWT("heavy") && data.heavySignaler) push(txt("U1", `신호수/유도자 : ${data.heavySignaler}`, { fontPt: 6.5 }));
+  if (selWT("heavy") && data.heavyEquipType) push(txt("AA5", data.heavyEquipType, { fontPt: 6.5 }));
 
   // ② 일반작업 구역 작업감독자(G55) = 업체 작업감독자(C7)와 동일 ("작업감독자 :" 와 "(인)" 사이)
   if (data.supervisor) {

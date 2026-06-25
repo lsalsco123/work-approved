@@ -104,12 +104,12 @@ body {
 .formcol { flex: 0 0 520px; max-width: 520px; }
 .previewcol { flex: 1; position: sticky; top: 64px; }
 
-/* 데스크톱: 좌측 입력 / 우측 미리보기 각각 독립 스크롤 */
+/* 데스크톱: 좌측 입력 / 우측 미리보기 각각 독립 스크롤 (작성화면 전용 .layout-split) */
 @media (min-width: 901px) {
-  .layout { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-  .body { flex: 1; min-height: 0; overflow: hidden; align-items: stretch; width: 100%; }
-  .formcol { overflow-y: auto; height: 100%; padding-right: 6px; }
-  .previewcol { position: static; top: auto; overflow-y: auto; height: 100%; }
+  .layout-split { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  .layout-split .body { flex: 1; min-height: 0; overflow: hidden; align-items: stretch; width: 100%; }
+  .layout-split .formcol { overflow-y: auto; height: 100%; padding-right: 6px; }
+  .layout-split .previewcol { position: static; top: auto; overflow-y: auto; height: 100%; }
 }
 
 /* JSA 참고표 모달 테이블 */
