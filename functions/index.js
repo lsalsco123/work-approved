@@ -3,17 +3,21 @@
  * admin SDK 권한으로 업체(게스트) 계정의 승인/차단/비밀번호를 처리한다.
  * 모든 함수는 호출자가 Firestore users/{uid}.role == 'admin' 인지 검증한다.
  */
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { setGlobalOptions } = require("firebase-functions/v2");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {setGlobalOptions} = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
-setGlobalOptions({ maxInstances: 10 });
+setGlobalOptions({maxInstances: 10});
 
 const auth = () => admin.auth();
 const db = () => admin.firestore();
 
-// 호출자가 admin 인지 확인. 아니면 throw.
+/**
+ * 호출자가 admin 인지 검증한다. 아니면 throw.
+ * @param {object} request onCall 요청 객체
+ * @return {Promise<string>} 호출자 uid
+ */
 async function assertAdmin(request) {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
@@ -24,6 +28,11 @@ async function assertAdmin(request) {
   return uid;
 }
 
+/**
+ * 요청 데이터에서 대상 uid 를 꺼낸다. 없으면 throw.
+ * @param {object} data onCall request.data
+ * @return {string} 대상 uid
+ */
 function requireUid(data) {
   const uid = (data && data.uid && String(data.uid).trim()) || "";
   if (!uid) throw new HttpsError("invalid-argument", "대상 uid 가 필요합니다.");
@@ -33,7 +42,8 @@ function requireUid(data) {
 // 업체 계정 목록 — Firestore(users role==guest) + Auth(이메일인증/차단여부) 병합.
 exports.adminListAccounts = onCall(async (request) => {
   await assertAdmin(request);
-  const snap = await db().collection("users").where("role", "==", "guest").get();
+  const snap = await db().collection("users")
+      .where("role", "==", "guest").get();
   const out = [];
   for (const docSnap of snap.docs) {
     const d = docSnap.data();
@@ -60,7 +70,7 @@ exports.adminListAccounts = onCall(async (request) => {
     });
   }
   out.sort((a, b) => (a.company || "").localeCompare(b.company || "", "ko"));
-  return { accounts: out };
+  return {accounts: out};
 });
 
 // 가입 승인: status -> active
@@ -68,10 +78,14 @@ exports.adminApprove = onCall(async (request) => {
   const adminUid = await assertAdmin(request);
   const uid = requireUid(request.data);
   await db().collection("users").doc(uid).set(
-    { status: "active", approvedAt: new Date().toISOString(), approvedBy: adminUid },
-    { merge: true }
+      {
+        status: "active",
+        approvedAt: new Date().toISOString(),
+        approvedBy: adminUid,
+      },
+      {merge: true},
   );
-  return { ok: true };
+  return {ok: true};
 });
 
 // 계정 차단/해제: Auth disabled 토글 + Firestore status 반영
@@ -79,12 +93,12 @@ exports.adminSetBlocked = onCall(async (request) => {
   await assertAdmin(request);
   const uid = requireUid(request.data);
   const blocked = !!(request.data && request.data.blocked);
-  await auth().updateUser(uid, { disabled: blocked });
+  await auth().updateUser(uid, {disabled: blocked});
   await db().collection("users").doc(uid).set(
-    { status: blocked ? "blocked" : "active" },
-    { merge: true }
+      {status: blocked ? "blocked" : "active"},
+      {merge: true},
   );
-  return { ok: true, blocked };
+  return {ok: true, blocked};
 });
 
 // 비밀번호 직접 지정(관리자 초기화)
@@ -95,6 +109,6 @@ exports.adminSetPassword = onCall(async (request) => {
   if (password.length < 6) {
     throw new HttpsError("invalid-argument", "비밀번호는 6자 이상이어야 합니다.");
   }
-  await auth().updateUser(uid, { password });
-  return { ok: true };
+  await auth().updateUser(uid, {password});
+  return {ok: true};
 });
