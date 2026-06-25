@@ -42,7 +42,7 @@ export default function SignupPage() {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "linear-gradient(135deg,#0a2240 0%,#003377 100%)" }}>
       <div className="panel" style={{ maxWidth: 420, width: "100%" }}>
         <div style={{ textAlign: "center", marginBottom: 22 }}>
-          <img src="/ls_alsco_logo.png" alt="LS Alsco" style={{ height: 34, marginBottom: 10 }} />
+          <img src="/ls_alsco_logo_color.png" alt="LS Alsco" style={{ height: 34, marginBottom: 10 }} />
           <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700 }}>업체 회원가입</h2>
           <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>작업허가서 발급 시스템</p>
         </div>
