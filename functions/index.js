@@ -140,86 +140,89 @@ exports.chainAction = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "action 이 올바르지 않습니다.");
   }
 
-  const pref = db().collection("permits").doc(permitId);
-  const psnap = await pref.get();
-  if (!psnap.exists) throw new HttpsError("not-found", "허가서를 찾을 수 없습니다.");
-  const permit = psnap.data();
+  // 호출자 역할은 트랜잭션 중 불변이므로 밖에서 1회 조회
   const usnap = await db().collection("users").doc(callerUid).get();
   const u = usnap.exists ? usnap.data() : {};
   const role = u.role || "guest";
   const isSys = role === "admin";
-  const stage = permit.stage || "manager";
-  const reqMgr = (permit.data && permit.data.manager) || "";
   const callerName = u.managerName || (isSys ? "시스템관리자" : "");
-  const isReqMgr = role === "manager" &&
-    u.managerKind === "requester" && u.managerName === reqMgr;
+  const pref = db().collection("permits").doc(permitId);
 
-  const canAtStage = (st) => {
-    if (isSys) return true; // override
-    if (role !== "manager") return false;
-    if (st === "manager") return isReqMgr;
-    if (st === "factory") return u.managerKind === "factory";
-    return false; // safety 단계는 시스템관리자 전담
-  };
+  // 동시 결재 경쟁 방지: permit 읽기·검증·쓰기를 트랜잭션으로 원자 처리
+  const result = await db().runTransaction(async (tx) => {
+    const psnap = await tx.get(pref);
+    if (!psnap.exists) throw new HttpsError("not-found", "허가서를 찾을 수 없습니다.");
+    const permit = psnap.data();
+    const stage = permit.stage || "manager";
+    const reqMgr = (permit.data && permit.data.manager) || "";
+    const isReqMgr = role === "manager" &&
+      u.managerKind === "requester" && u.managerName === reqMgr;
+    const canAtStage = (st) => {
+      if (isSys) return true; // override
+      if (role !== "manager") return false;
+      if (st === "manager") return isReqMgr;
+      if (st === "factory") return u.managerKind === "factory";
+      return false; // safety 단계는 시스템관리자 전담
+    };
+    const now = new Date().toISOString();
 
-  // 재상신: 반려건을 담당자/관리자가 다시 결재 라인에 올림
-  if (action === "resubmit") {
-    if (permit.status !== "rejected") {
-      throw new HttpsError("failed-precondition", "반려 상태에서만 재상신할 수 있습니다.");
+    // 재상신: 반려건을 담당자/관리자가 다시 결재 라인에 올림
+    if (action === "resubmit") {
+      if (permit.status !== "rejected") {
+        throw new HttpsError("failed-precondition", "반려 상태에서만 재상신할 수 있습니다.");
+      }
+      if (!(isSys || isReqMgr)) {
+        throw new HttpsError("permission-denied", "재상신 권한이 없습니다.");
+      }
+      tx.update(pref, {
+        status: "submitted", stage: "manager", chain: {}, updatedAt: now,
+      });
+      return {stage: "manager", status: "submitted"};
     }
-    if (!(isSys || isReqMgr)) {
-      throw new HttpsError("permission-denied", "재상신 권한이 없습니다.");
+
+    if (permit.status !== "submitted") {
+      throw new HttpsError("failed-precondition", "진행 중(제출됨) 건만 결재할 수 있습니다.");
     }
-    await pref.update({
-      "status": "submitted", "stage": "manager",
-      "chain": {}, "updatedAt": new Date().toISOString(),
-    });
-    return {ok: true, stage: "manager", status: "submitted"};
-  }
+    if (stage === "manager" && !reqMgr && !isSys) {
+      throw new HttpsError("failed-precondition",
+          "담당자(의뢰자)가 지정되지 않은 건입니다. 업체가 담당자를 지정해 재제출해야 합니다.");
+    }
+    if (!canAtStage(stage)) {
+      throw new HttpsError("permission-denied", "이 단계를 결재할 권한이 없습니다.");
+    }
 
-  if (permit.status !== "submitted") {
-    throw new HttpsError("failed-precondition", "진행 중(제출됨) 건만 결재할 수 있습니다.");
-  }
-  // 담당자(의뢰자) 미지정 건은 1차 결재 주체가 없으므로 시스템관리자만 처리 가능
-  if (stage === "manager" && !reqMgr && !isSys) {
-    throw new HttpsError("failed-precondition",
-        "담당자(의뢰자)가 지정되지 않은 건입니다. 업체가 담당자를 지정해 재제출해야 합니다.");
-  }
-  if (!canAtStage(stage)) {
-    throw new HttpsError("permission-denied", "이 단계를 결재할 권한이 없습니다.");
-  }
+    if (action === "reject") {
+      if (!comment) throw new HttpsError("invalid-argument", "반려 사유를 입력하세요.");
+      tx.update(pref, {
+        "status": "rejected",
+        "chain.rejected": {stage, by: callerName, reason: comment, at: now},
+        "adminNote": comment, "updatedAt": now,
+      });
+      return {status: "rejected"};
+    }
 
-  const now = new Date().toISOString();
-  if (action === "reject") {
-    if (!comment) throw new HttpsError("invalid-argument", "반려 사유를 입력하세요.");
-    await pref.update({
-      "status": "rejected",
-      "chain.rejected": {stage, by: callerName, reason: comment, at: now},
-      "adminNote": comment, "updatedAt": now,
-    });
-    return {ok: true, status: "rejected"};
-  }
-
-  // approve: 단계 기록 + 다음 단계로 전이
-  const upd = {updatedAt: now};
-  upd[`chain.${stage}`] = {by: callerName, comment, at: now};
-  if (stage === "manager") {
-    upd["data.admin.issue.name"] = reqMgr;
-    upd.stage = "safety";
-  } else if (stage === "safety") {
-    upd["data.admin.review.name"] = reviewerName || "박세현";
-    upd["data.admin.review.dept"] = "환경안전";
-    upd.stage = "factory";
-  } else if (stage === "factory") {
-    upd["data.admin.approve.name"] = "이태훈";
-    upd["data.admin.approve.dept"] = "공장장";
-    upd.status = "approved";
-    upd.approvedBy = "이태훈";
-    upd.approvedAt = now;
-    upd.stage = "done";
-  }
-  await pref.update(upd);
-  return {ok: true, stage: upd.stage, status: upd.status || "submitted"};
+    // approve: 단계 기록 + 다음 단계로 전이
+    const upd = {updatedAt: now};
+    upd[`chain.${stage}`] = {by: callerName, comment, at: now};
+    if (stage === "manager") {
+      upd["data.admin.issue.name"] = reqMgr;
+      upd.stage = "safety";
+    } else if (stage === "safety") {
+      upd["data.admin.review.name"] = reviewerName || "박세현";
+      upd["data.admin.review.dept"] = "환경안전";
+      upd.stage = "factory";
+    } else if (stage === "factory") {
+      upd["data.admin.approve.name"] = "이태훈";
+      upd["data.admin.approve.dept"] = "공장장";
+      upd.status = "approved";
+      upd.approvedBy = "이태훈";
+      upd.approvedAt = now;
+      upd.stage = "done";
+    }
+    tx.update(pref, upd);
+    return {stage: upd.stage, status: upd.status || "submitted"};
+  });
+  return {ok: true, ...result};
 });
 
 /**

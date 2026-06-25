@@ -119,8 +119,13 @@ export async function listChainPermits(
     const q = query(collection(db, COL), where("data.manager", "==", managerName), limit(max));
     docs = (await getDocs(q)).docs;
   } else {
-    const q = query(collection(db, COL), orderBy("createdAt", "desc"), limit(max));
-    docs = (await getDocs(q)).docs;
+    // 공장장(factory): 자기 차례(stage=factory) + 완료(approved/completed)만 — rules 와 일치
+    const [s1, s2] = await Promise.all([
+      getDocs(query(collection(db, COL), where("stage", "==", "factory"), limit(max))),
+      getDocs(query(collection(db, COL), where("status", "in", ["approved", "completed"]), limit(max))),
+    ]);
+    const seen = new Set<string>();
+    docs = [...s1.docs, ...s2.docs].filter((d) => (seen.has(d.id) ? false : (seen.add(d.id), true)));
   }
   return docs
     .map((d) => ({ id: d.id, ...d.data() } as PermitRecord))
