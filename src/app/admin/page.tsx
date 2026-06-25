@@ -6,7 +6,7 @@ import {
   listAllPermits, PermitRecord, PermitStatus,
 } from "@/lib/permits";
 import { listTemplates, deleteTemplate, createTemplate, PermitTemplate } from "@/lib/templates";
-import { createCompanyAccount, listCompanyAccounts, CompanyAccount } from "@/lib/accounts";
+import { listCompanyAccounts, adminApprove, adminSetBlocked, adminSetPassword, sendResetEmail, CompanyAccount } from "@/lib/accounts";
 import { DEFAULT_TEMPLATES } from "@/lib/samples";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
@@ -82,38 +82,47 @@ export default function AdminPage() {
     finally { setTplBusy(false); }
   };
 
-  // 업체(게스트) 계정 관리
+  // 업체(게스트) 계정 관리 — 업체는 셀프 회원가입, 관리자는 승인/차단/비번 관리
   const [accounts, setAccounts] = useState<CompanyAccount[]>([]);
-  const [acctBusy, setAcctBusy] = useState(false);
-  const [showAcctForm, setShowAcctForm] = useState(false);
-  const [acctCompany, setAcctCompany] = useState("");
-  const [acctId, setAcctId] = useState("");
-  const [acctPw, setAcctPw] = useState("");
+  const [acctLoading, setAcctLoading] = useState(true);
+  const [acctError, setAcctError] = useState("");
+  const [busyUid, setBusyUid] = useState<string>("");
 
   const fetchAccounts = async () => {
+    setAcctLoading(true); setAcctError("");
     try { setAccounts(await listCompanyAccounts()); }
-    catch (e) { console.error("업체 계정 조회 실패:", e); }
+    catch (e) {
+      console.error("업체 계정 조회 실패:", e);
+      setAcctError("계정 목록을 불러오지 못했습니다. (Cloud Function 배포 여부를 확인하세요)");
+    } finally { setAcctLoading(false); }
   };
 
   useEffect(() => { if (user?.role === "admin") fetchAccounts(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleCreateAccount = async () => {
-    if (acctBusy) return;
-    setAcctBusy(true);
-    try {
-      await createCompanyAccount(acctId, acctCompany, acctPw);
-      alert(`업체 계정이 생성되었습니다.\n업체: ${acctCompany}\n아이디: ${acctId}`);
-      setAcctCompany(""); setAcctId(""); setAcctPw(""); setShowAcctForm(false);
-      await fetchAccounts();
-    } catch (e: unknown) {
-      const code = (e as { code?: string })?.code ?? "";
-      const msg = code === "auth/email-already-in-use" ? "이미 존재하는 아이디입니다."
-        : code === "auth/weak-password" ? "비밀번호는 6자 이상이어야 합니다."
-        : code === "auth/invalid-email" ? "사용할 수 없는 아이디입니다."
-        : (e as Error)?.message ?? String(e);
-      alert("계정 생성 실패: " + msg);
-    } finally { setAcctBusy(false); }
+  const run = async (uid: string, fn: () => Promise<void>, okMsg?: string) => {
+    if (busyUid) return;
+    setBusyUid(uid);
+    try { await fn(); if (okMsg) alert(okMsg); await fetchAccounts(); }
+    catch (e: unknown) { alert("처리 실패: " + ((e as Error)?.message ?? String(e))); }
+    finally { setBusyUid(""); }
   };
+
+  const onApprove = (a: CompanyAccount) => run(a.uid, () => adminApprove(a.uid), `${a.company} 계정을 승인했습니다.`);
+  const onToggleBlock = (a: CompanyAccount) => {
+    const blocking = a.status !== "blocked";
+    if (blocking && !confirm(`${a.company} 계정을 차단할까요? 차단 시 로그인·제출이 막힙니다.`)) return;
+    run(a.uid, () => adminSetBlocked(a.uid, blocking), blocking ? "차단했습니다." : "차단을 해제했습니다.");
+  };
+  const onSetPassword = (a: CompanyAccount) => {
+    const pw = window.prompt(`${a.company} 계정의 새 비밀번호 (6자 이상):`);
+    if (pw == null) return;
+    run(a.uid, () => adminSetPassword(a.uid, pw), "비밀번호를 변경했습니다. 업체에 전달하세요.");
+  };
+  const onResetEmail = (a: CompanyAccount) =>
+    run(a.uid, () => sendResetEmail(a.email), `${a.email} 로 비밀번호 재설정 메일을 보냈습니다.`);
+
+  const pending = accounts.filter((a) => a.status === "pending");
+  const others = accounts.filter((a) => a.status !== "pending");
 
   const count = (s: PermitStatus) => permits.filter((p) => p.status === s).length;
 
@@ -139,43 +148,61 @@ export default function AdminPage() {
       </header>
 
       <div className="page">
-        {/* 업체(외주) 계정 관리 */}
+        {/* 업체(외주) 계정 관리 — 업체 셀프 회원가입 / 관리자 승인·차단·비번관리 */}
         <div className="panel">
           <div className="panel-head">
             <span className="panel-title" style={{ color: "#0369a1" }}>업체 계정 관리</span>
-            <span className="panel-sub">외주업체별로 개별 로그인 계정을 발급합니다. (업체는 자기 허가서만 조회·작성)</span>
+            <span className="panel-sub">업체가 직접 회원가입합니다. 관리자는 승인·차단·비밀번호만 관리합니다.</span>
             <div className="grow" />
-            <button className="mini" onClick={() => setShowAcctForm((s) => !s)}>{showAcctForm ? "닫기" : "+ 업체 계정 생성"}</button>
+            <button className="mini" onClick={fetchAccounts} disabled={acctLoading}>↻ 새로고침</button>
           </div>
 
-          {showAcctForm && (
-            <div className="form-row">
-              <label className="field">
-                <span>업체명</span>
-                <input className="inp" style={{ width: 180 }} value={acctCompany} onChange={(e) => setAcctCompany(e.target.value)} placeholder="예: 신우기전" />
-              </label>
-              <label className="field">
-                <span>로그인 아이디</span>
-                <input className="inp" style={{ width: 160 }} value={acctId} onChange={(e) => setAcctId(e.target.value)} placeholder="예: sinwoo" autoComplete="off" />
-              </label>
-              <label className="field">
-                <span>초기 비밀번호 (6자 이상)</span>
-                <input className="inp" style={{ width: 160 }} type="text" value={acctPw} onChange={(e) => setAcctPw(e.target.value)} placeholder="업체에 전달할 비밀번호" autoComplete="new-password" />
-              </label>
-              <button className="mini btn-accent" disabled={acctBusy} onClick={handleCreateAccount}>
-                {acctBusy ? "생성 중…" : "계정 생성"}
-              </button>
+          {acctError && <p className="note note-error" style={{ marginBottom: 10 }}><span className="ico">⚠</span>{acctError}</p>}
+
+          {/* 승인 대기 */}
+          {pending.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#b45309", marginBottom: 8 }}>승인 대기 {pending.length}건</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {pending.map((a) => (
+                  <div key={a.uid} className="acct-row">
+                    <div className="acct-info">
+                      <span className="lead">{a.company || "(업체명 없음)"}</span>
+                      <span className="meta">{a.email}</span>
+                      <span className={`chip ${a.emailVerified ? "chip-approved" : "chip-submitted"}`}>{a.emailVerified ? "이메일 인증됨" : "이메일 미인증"}</span>
+                    </div>
+                    <div className="acct-actions">
+                      <button className="mini btn-approve" disabled={busyUid === a.uid || !a.emailVerified} title={a.emailVerified ? "" : "이메일 인증 후 승인 가능"} onClick={() => onApprove(a)}>승인</button>
+                      <button className="mini" disabled={busyUid === a.uid} onClick={() => onResetEmail(a)}>재설정 메일</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          {accounts.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>아직 발급된 업체 계정이 없습니다. “+ 업체 계정 생성”으로 추가하세요.</p>
+          {/* 활성/차단 계정 */}
+          {acctLoading ? (
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>불러오는 중…</p>
+          ) : others.length === 0 && pending.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>아직 가입한 업체가 없습니다. 업체가 로그인 화면의 “업체 회원가입”으로 가입합니다.</p>
           ) : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {accounts.map((a) => (
-                <div key={a.uid} className="tagcard">
-                  <span className="lead">{a.company || "(업체명 없음)"}</span>
-                  <span className="meta">아이디 {a.loginId}</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {others.map((a) => (
+                <div key={a.uid} className="acct-row">
+                  <div className="acct-info">
+                    <span className="lead">{a.company || "(업체명 없음)"}</span>
+                    <span className="meta">{a.email}</span>
+                    <span className={`chip chip-${a.status === "blocked" ? "rejected" : "approved"}`}>{a.status === "blocked" ? "차단됨" : "활성"}</span>
+                    {!a.emailVerified && <span className="chip chip-submitted">이메일 미인증</span>}
+                  </div>
+                  <div className="acct-actions">
+                    <button className="mini" disabled={busyUid === a.uid} onClick={() => onSetPassword(a)}>비번 변경</button>
+                    <button className="mini" disabled={busyUid === a.uid} onClick={() => onResetEmail(a)}>재설정 메일</button>
+                    <button className={`mini ${a.status === "blocked" ? "btn-approve" : "btn-reject"}`} disabled={busyUid === a.uid} onClick={() => onToggleBlock(a)}>
+                      {a.status === "blocked" ? "차단 해제" : "차단"}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

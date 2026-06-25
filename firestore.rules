@@ -7,15 +7,26 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // 요청자(게스트)가 승인된 활성 계정인가. status 없는 legacy 계정은 grace 로 통과.
+    function requesterActive() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'active') == 'active';
+    }
+
     // 사용자 프로필
     match /users/{uid} {
       function isSelf() { return request.auth != null && request.auth.uid == uid; }
 
       allow read: if isSelf() || isAdmin();
-      // 본인 문서 생성은 가능하되 role 은 반드시 guest (관리자 권한 자가 승격 차단)
-      allow create: if isSelf() && request.resource.data.role == 'guest';
-      // 수정 시 role 변경 금지 (권한 상승 방지). admin 승격은 콘솔에서만.
-      allow update: if isSelf() && request.resource.data.role == resource.data.role;
+      // 셀프 회원가입: role 은 반드시 guest, 최초 status 는 pending 강제 (자가 활성/승격 차단)
+      allow create: if isSelf()
+        && request.resource.data.role == 'guest'
+        && request.resource.data.status == 'pending';
+      // 수정 시 role/status 변경 금지 (자가 승인·권한 상승 차단). 승인/차단은 Cloud Function(admin SDK)이 처리.
+      // .get(...,default) 로 status 없는 legacy 문서에서도 평가 에러 없이 동작.
+      allow update: if isSelf()
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.get('status', 'active') == resource.data.get('status', 'active');
       allow delete: if false;
     }
 
@@ -27,8 +38,9 @@ service cloud.firestore {
 
       allow read: if isAdmin() || isOwner();
 
-      // 생성: 본인 소유 + 최초 상태는 draft 로 고정
+      // 생성: 본인 소유 + 최초 상태는 draft 로 고정 + 승인된 활성 계정만
       allow create: if request.auth != null
+        && requesterActive()
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.status == 'draft';
 
@@ -38,6 +50,7 @@ service cloud.firestore {
       //    상태는 draft/submitted 로만 이동 가능 (approved/completed 자가 설정 차단)
       allow update: if isAdmin()
         || (isOwner()
+            && requesterActive()
             && resource.data.status in ['draft', 'rejected']
             && request.resource.data.createdBy == resource.data.createdBy
             && request.resource.data.status in ['draft', 'submitted']);

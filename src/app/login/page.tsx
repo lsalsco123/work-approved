@@ -1,13 +1,15 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth";
+import { sendResetEmail } from "@/lib/accounts";
 
 const ERR_MAP: Record<string, string> = {
-  "auth/user-not-found": "아이디를 찾을 수 없습니다.",
-  "auth/invalid-credential": "아이디 또는 비밀번호가 올바르지 않습니다.",
+  "auth/user-not-found": "계정을 찾을 수 없습니다.",
+  "auth/invalid-credential": "이메일 또는 비밀번호가 올바르지 않습니다.",
   "auth/wrong-password": "비밀번호가 올바르지 않습니다.",
-  "auth/invalid-email": "사용할 수 없는 아이디입니다.",
+  "auth/invalid-email": "올바른 이메일 주소를 입력하세요.",
   "auth/too-many-requests": "로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요.",
 };
 
@@ -24,8 +26,16 @@ export default function LoginPage() {
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [slide, setSlide] = useState(0);
+
+  const handleReset = async () => {
+    setError(""); setInfo("");
+    if (!id.includes("@")) { setError("재설정 메일을 받을 이메일 주소를 입력란에 먼저 입력하세요."); return; }
+    try { await sendResetEmail(id); setInfo("비밀번호 재설정 메일을 보냈습니다. 메일함을 확인하세요."); }
+    catch { setError("재설정 메일 발송에 실패했습니다. 이메일을 확인하세요."); }
+  };
 
   useEffect(() => {
     if (!loading && user) {
@@ -94,9 +104,9 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,.8)", marginBottom: 5 }}>아이디</label>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,.8)", marginBottom: 5 }}>이메일</label>
             <input style={inputStyle} type="text" value={id} onChange={(e) => setId(e.target.value)}
-              placeholder="아이디" required autoComplete="username" />
+              placeholder="company@example.com" required autoComplete="username" />
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,.8)", marginBottom: 5 }}>비밀번호</label>
@@ -104,6 +114,7 @@ export default function LoginPage() {
               required autoComplete="current-password" />
           </div>
           {error && <p style={{ color: "#fca5a5", fontSize: 13, margin: "2px 0 10px", fontWeight: 500 }}>{error}</p>}
+          {info && <p style={{ color: "#bbf7d0", fontSize: 13, margin: "2px 0 10px", fontWeight: 500 }}>{info}</p>}
           <button type="submit" disabled={submitting} style={{
             width: "100%", padding: "11px 0", fontSize: 14, fontWeight: 700, marginTop: 4,
             background: submitting ? "rgba(0,51,119,.5)" : "#003377",
@@ -114,6 +125,13 @@ export default function LoginPage() {
           }}>
             {submitting ? "로그인 중…" : "로그인"}
           </button>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, fontSize: 13 }}>
+            <Link href="/signup" style={{ color: "#fff", fontWeight: 600, textDecoration: "none" }}>업체 회원가입</Link>
+            <button type="button" onClick={handleReset} style={{ background: "none", border: "none", color: "rgba(255,255,255,.8)", fontSize: 13, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
+              비밀번호를 잊으셨나요?
+            </button>
+          </div>
         </form>
       </div>
 

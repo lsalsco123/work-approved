@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import AccessGate from "@/components/AccessGate";
 import { listMyPermits, PermitRecord, PermitStatus } from "@/lib/permits";
 
 const STATUS_LABEL: Record<PermitStatus, { text: string; color: string }> = {
@@ -20,6 +21,10 @@ function tsToStr(ts: unknown): string {
 }
 
 export default function MyPage() {
+  return <AccessGate><MyDashboard /></AccessGate>;
+}
+
+function MyDashboard() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
   const [permits, setPermits] = useState<PermitRecord[]>([]);

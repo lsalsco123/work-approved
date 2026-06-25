@@ -337,9 +337,26 @@ html { scroll-behavior: smooth; }
 .panel-head .grow { flex: 1; }
 
 /* 폼 필드(라벨 스택) + 가로 폼 행 */
-.field { display: flex; flex-direction: column; gap: 5px; }
-.field > span { font-size: 12px; font-weight: 600; color: #475569; }
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.field > span, .field > label { font-size: 12px; font-weight: 600; color: #475569; }
+.field > input, .field > select { width: 100%; padding: 9px 11px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 14px; font-family: inherit; box-sizing: border-box; outline: none; }
+.field > input:focus, .field > select:focus { border-color: #0369a1; box-shadow: 0 0 0 2px rgba(3,105,161,.12); }
 .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: var(--radius-sm); margin-bottom: 12px; }
+
+/* 강조 버튼 단독형(.mini 없이도 색 적용) */
+button.btn-accent { background: #0369a1; color: #fff; border: none; cursor: pointer; }
+button.btn-accent:disabled { background: #94a3b8; cursor: not-allowed; }
+
+/* 업체 계정 관리 행 */
+.acct-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
+.acct-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.acct-info .lead { font-weight: 700; color: #1f2d3d; }
+.acct-info .meta { font-size: 12px; color: var(--fl-muted); }
+.acct-actions { display: flex; gap: 6px; flex-shrink: 0; }
+@media (max-width: 560px) {
+  .acct-row { flex-direction: column; align-items: stretch; }
+  .acct-actions { justify-content: flex-end; }
+}
 
 /* 시맨틱 버튼(.mini 확장) — 승인/반려/완료/강조 */
 .mini.btn-approve { background: #16a34a; border-color: #16a34a; color: #fff; }

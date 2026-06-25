@@ -18,6 +18,7 @@ import {
   listTemplates, getTemplate, createTemplate, updateTemplate, PermitTemplate,
 } from "@/lib/templates";
 import { auth } from "@/lib/firebase";
+import AccessGate from "@/components/AccessGate";
 
 const STATUS_LABEL: Record<PermitStatus, { text: string; color: string }> = {
   draft:     { text: "임시저장", color: "#94a3b8" },
@@ -715,7 +716,7 @@ function FillInner() {
 export default function FillPage() {
   return (
     <Suspense fallback={<div className="loading"><span className="spinner" />불러오는 중…</div>}>
-      <FillInner />
+      <AccessGate><FillInner /></AccessGate>
     </Suspense>
   );
 }
