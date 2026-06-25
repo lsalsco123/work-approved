@@ -126,23 +126,23 @@ export default function AdminPage() {
   const onResetEmail = (a: CompanyAccount) =>
     run(a.uid, () => sendResetEmail(a.email), `${a.email} 로 비밀번호 재설정 메일을 보냈습니다.`);
 
-  // 역할 분류: 업체 / 관리자(담당자·환경안전·공장장)
+  // 역할 분류: 업체 / 시스템관리자 / 관리자(담당자·공장장)
   const roleValue = (a: CompanyAccount) =>
-    a.role !== "manager" ? "guest"
-      : a.managerKind === "safety" ? "safety"
+    a.role === "admin" ? "admin"
+      : a.role !== "manager" ? "guest"
         : a.managerKind === "factory" ? "factory"
           : `req:${a.managerName}`;
   const onSetRole = (a: CompanyAccount, v: string) => {
     if (v === roleValue(a)) return;
     if (v === "guest") return run(a.uid, () => adminSetRole(a.uid, "guest"), "업체로 변경했습니다.");
-    if (v === "safety") return run(a.uid, () => adminSetRole(a.uid, "manager", "safety", "박세현"), "환경안전 관리자로 지정했습니다.");
+    if (v === "admin") return run(a.uid, () => adminSetRole(a.uid, "admin"), "시스템관리자로 지정했습니다.");
     if (v === "factory") return run(a.uid, () => adminSetRole(a.uid, "manager", "factory", "이태훈"), "공장장으로 지정했습니다.");
     if (v.startsWith("req:")) return run(a.uid, () => adminSetRole(a.uid, "manager", "requester", v.slice(4)), "담당자로 지정했습니다.");
   };
   const RoleSelect = ({ a }: { a: CompanyAccount }) => (
-    <select className="inp" style={{ width: 150, fontSize: 12 }} value={roleValue(a)} disabled={busyUid === a.uid} onChange={(e) => onSetRole(a, e.target.value)}>
+    <select className="inp" style={{ width: 160, fontSize: 12 }} value={roleValue(a)} disabled={busyUid === a.uid} onChange={(e) => onSetRole(a, e.target.value)}>
       <option value="guest">업체</option>
-      <option value="safety">관리자·환경안전</option>
+      <option value="admin">시스템관리자</option>
       <option value="factory">관리자·공장장</option>
       <optgroup label="관리자·담당자">
         {MANAGERS.map((m) => <option key={m.name} value={`req:${m.name}`}>{m.name} ({m.dept})</option>)}

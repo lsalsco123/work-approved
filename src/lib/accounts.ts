@@ -11,7 +11,7 @@ export interface CompanyAccount {
   email: string;
   company: string;
   status: "pending" | "active" | "blocked";
-  role: "guest" | "manager";
+  role: "guest" | "manager" | "admin";
   managerKind: ManagerKind;
   managerName: string;
   emailVerified: boolean;
@@ -70,9 +70,9 @@ export async function adminSetPassword(uid: string, password: string): Promise<v
   await httpsCallable(functions, "adminSetPassword")({ uid, password });
 }
 
-// 역할 분류: 업체(guest) / 관리자(manager). 관리자면 kind(requester/safety/factory)+이름 지정.
+// 역할 분류: 업체(guest)/관리자(manager)/시스템관리자(admin). 관리자면 kind(requester/factory)+이름.
 export async function adminSetRole(
-  uid: string, role: "guest" | "manager", managerKind: ManagerKind = "", managerName = "",
+  uid: string, role: "guest" | "manager" | "admin", managerKind: ManagerKind = "", managerName = "",
 ): Promise<void> {
   await httpsCallable(functions, "adminSetRole")({ uid, role, managerKind, managerName });
 }

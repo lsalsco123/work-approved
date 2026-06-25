@@ -18,13 +18,13 @@ service cloud.firestore {
     }
     // 관리자(manager)가 이 permit 의 결재 라인에 속하는가.
     //  - requester: 자신이 담당자(data.manager)인 건
-    //  - safety/factory: 결재 단계 전담이라 모든 건 조회
+    //  - factory(공장장): 최종 결재 전담이라 모든 건 조회
+    //  (환경안전 단계는 시스템관리자(admin)가 수행 — isAdmin 으로 전체 접근)
     function isChainManager(permit) {
       return request.auth != null
         && myUser().get('role', '') == 'manager'
         && (
-          myUser().get('managerKind', '') == 'safety'
-          || myUser().get('managerKind', '') == 'factory'
+          myUser().get('managerKind', '') == 'factory'
           || (myUser().get('managerKind', '') == 'requester'
               && myUser().get('managerName', '') == permit.data.get('data', {}).get('manager', ''))
         );
