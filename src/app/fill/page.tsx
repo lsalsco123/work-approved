@@ -13,7 +13,7 @@ import {
 import SignaturePad from "@/components/SignaturePad";
 import { sampleGeneral } from "@/lib/samples";
 import { MANAGERS, SAFETY_REVIEWERS } from "@/lib/managers";
-import { savePermit, submitPermit, getPermit, saveAdminFields, approvePermit, rejectPermit, completePermit, PermitStatus } from "@/lib/permits";
+import { savePermit, submitPermit, getPermit, saveAdminFields, completePermit, chainAction, PermitStatus, ChainStage, PermitChain } from "@/lib/permits";
 import {
   listTemplates, getTemplate, createTemplate, updateTemplate, PermitTemplate,
 } from "@/lib/templates";
@@ -43,6 +43,8 @@ function FillInner() {
   const [showPreview, setShowPreview] = useState(true);
   const [permitId, setPermitId] = useState<string | null>(cloudId);
   const [permitStatus, setPermitStatus] = useState<PermitStatus | null>(null);
+  const [permitStage, setPermitStage] = useState<ChainStage | null>(null);
+  const [chain, setChain] = useState<PermitChain | null>(null);
   const [adminNote, setAdminNote] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [cloudLoaded, setCloudLoaded] = useState(!cloudId && !templateId);
@@ -65,6 +67,8 @@ function FillInner() {
         if (rec) {
           setData(rec.data);
           setPermitStatus(rec.status);
+          setPermitStage(rec.stage ?? null);
+          setChain(rec.chain ?? null);
           setAdminNote(rec.adminNote ?? "");
         } else {
           // 존재하지 않는 문서 → 빈 폼 대신 안내 표시 (권한 거부는 catch에서 처리)
@@ -157,9 +161,12 @@ function FillInner() {
     );
   }
 
-  // draft / rejected 상태에서만 편집 가능 (반려건은 수정 후 재제출 허용)
-  const isReadOnly = !!permitStatus && permitStatus !== "draft" && permitStatus !== "rejected";
-  const canSubmit = !permitStatus || permitStatus === "draft" || permitStatus === "rejected";
+  const isGuest = user?.role === "guest";
+  // 업체(게스트): draft/rejected 만 편집. 관리자/시스템관리자: 기존 건은 읽기전용(결재 패널로만 처리). 템플릿 편집은 예외.
+  const isReadOnly = templateMode ? false
+    : (!isGuest ? !!permitId
+      : (!!permitStatus && permitStatus !== "draft" && permitStatus !== "rejected"));
+  const canSubmit = isGuest && (!permitStatus || permitStatus === "draft" || permitStatus === "rejected");
 
   const handleSave = async (): Promise<string | null> => {
     if (!user) { alert("로그인 후 이용 가능합니다."); return null; }
@@ -302,34 +309,47 @@ function FillInner() {
     finally { setSaving(false); }
   };
 
-  // 관리자 처리: 승인/반려/완료 — 같은 화면(상세)에서 일괄 수행
-  const handleApprove = async () => {
-    if (!permitId || !user) return;
-    // 검토자(환경안전) 미선택이면 승인 차단
-    if (!data.admin.review.name) { alert("검토자(환경안전)를 먼저 선택해주세요."); return; }
-    if (!window.confirm("이 작업허가서를 승인하시겠습니까?")) return;
+  // 결재 처리 — 단계별 승인/반려/재상신 (서버 chainAction 이 권한·단계 검증)
+  const backList = () => router.push(user?.role === "admin" ? "/admin" : "/manager");
+  const doApprove = async () => {
+    if (!permitId) return;
+    // 환경안전(safety) 단계는 검토자명 필요(기본 박세현)
+    let reviewerName = "";
+    if (permitStage === "safety") {
+      reviewerName = data.admin.review.name || "박세현";
+    }
+    const comment = window.prompt("결재 의견 (선택 — 담당자 1차는 공사 내용을 적어 올리세요. 공장장 승인은 생략 가능):", "");
+    if (comment === null) return;
     setSaving(true);
     try {
-      // 확인(●)·검토자 먼저 저장한 뒤 승인 처리
-      await saveAdminFields(permitId, data.confirmed, data.admin.review.name);
-      await approvePermit(permitId, user.email);
-      alert("승인되었습니다.");
-      router.push("/admin");
-    } catch (e) { alert("승인 실패: " + e); }
+      const r = await chainAction(permitId, "approve", comment.trim(), reviewerName);
+      alert(r.status === "approved" ? "최종 승인되었습니다." : "승인하여 다음 단계로 넘겼습니다.");
+      backList();
+    } catch (e) { alert("처리 실패: " + ((e as Error)?.message ?? String(e))); }
     finally { setSaving(false); }
   };
-  const handleReject = async () => {
+  const doReject = async () => {
     if (!permitId) return;
-    const note = window.prompt("반려 사유를 입력하세요 (작성자에게 표시됩니다):", "");
-    if (note === null) return;
-    if (!note.trim()) { alert("반려 사유를 반드시 입력해야 합니다."); return; }
-    if (!window.confirm("이 작업허가서를 반려하시겠습니까?")) return;
+    const reason = window.prompt("반려 사유 (필수) — 담당자에게 전달됩니다:", "");
+    if (reason === null) return;
+    if (!reason.trim()) { alert("반려 사유는 필수입니다."); return; }
     setSaving(true);
     try {
-      await rejectPermit(permitId, note.trim());
-      alert("반려되었습니다.");
-      router.push("/admin");
-    } catch (e) { alert("반려 실패: " + e); }
+      await chainAction(permitId, "reject", reason.trim());
+      alert("반려되었습니다. 담당자에게 반환됩니다.");
+      backList();
+    } catch (e) { alert("반려 실패: " + ((e as Error)?.message ?? String(e))); }
+    finally { setSaving(false); }
+  };
+  const doResubmit = async () => {
+    if (!permitId) return;
+    if (!window.confirm("이 건을 다시 결재 라인에 올릴까요? (1차 결재부터 재진행)")) return;
+    setSaving(true);
+    try {
+      await chainAction(permitId, "resubmit");
+      alert("재상신되었습니다.");
+      backList();
+    } catch (e) { alert("재상신 실패: " + ((e as Error)?.message ?? String(e))); }
     finally { setSaving(false); }
   };
   const handleComplete = async () => {
@@ -356,7 +376,6 @@ function FillInner() {
     setData((d) => ({ ...d, admin: { ...d.admin, review: { ...d.admin.review, name, dept: "환경안전" } } }));
 
   const statusInfo = permitStatus ? STATUS_LABEL[permitStatus] : null;
-  const isGuest = user?.role !== "admin";
 
   return (
     <div className="layout layout-split">
@@ -433,82 +452,95 @@ function FillInner() {
 
       <div className="body">
         <div className="formcol no-print">
-          {!templateMode && user?.role === "admin" && permitId && (() => {
+          {!templateMode && permitId && (user?.role === "admin" || user?.role === "manager") && (() => {
+            const role = user!.role;
+            const isSys = role === "admin";
+            const STAGE_LABEL: Record<string, string> = { manager: "담당자 1차", safety: "환경안전", factory: "공장장 최종", done: "완료" };
+            const stageNow = permitStage || (permitStatus === "submitted" ? "manager" : null);
+            const canActNow = permitStatus === "submitted" && (isSys
+              || (role === "manager" && (
+                (stageNow === "manager" && user!.managerKind === "requester" && user!.managerName === data.manager)
+                || (stageNow === "factory" && user!.managerKind === "factory")
+              )));
+            const canResubmit = permitStatus === "rejected"
+              && (isSys || (role === "manager" && user!.managerKind === "requester" && user!.managerName === data.manager));
             const items = confirmableItems(data);
             return (
               <div style={{ border: "1px solid #c7d2fe", borderRadius: 10, padding: 14, marginBottom: 14, background: "#eef2ff" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-                  <strong style={{ fontSize: 14, color: "#3730a3" }}>관리자 확인</strong>
-                  <span style={{ fontSize: 12, color: "#64748b" }}>업체가 체크한 항목을 확인하면 ●로 표시됩니다.</span>
-                  <div style={{ flex: 1 }} />
-                  <button className="mini" onClick={confirmAll}>일괄 확인</button>
-                  <button className="mini" onClick={clearConfirm}>전체 해제</button>
-                  <button className="mini" onClick={handleSaveConfirm} disabled={saving} style={{ background: "#4f46e5", color: "#fff" }}>
-                    {saving ? "저장 중…" : "확인 저장"}
-                  </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                  <strong style={{ fontSize: 14, color: "#3730a3" }}>결재</strong>
+                  <span style={{ fontSize: 12, color: "#475569" }}>
+                    {["manager", "safety", "factory"].map((s) => STAGE_LABEL[s] + (stageNow === s ? " ◀" : "")).join("  →  ")}
+                  </span>
+                  {isSys && <span style={{ fontSize: 11, color: "#94a3b8" }}>(시스템관리자: 모든 단계 처리 가능)</span>}
                 </div>
-                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", marginBottom: 10, fontSize: 13 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    검토자(환경안전):
-                    <select className="inp" value={data.admin.review.name} onChange={(e) => setReviewer(e.target.value)}>
-                      <option value="">선택</option>
-                      {SAFETY_REVIEWERS.map((n) => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                  </label>
-                  <span style={{ color: "#475569" }}>승인: <strong>공장장 이태훈</strong> <span style={{ color: "#94a3b8" }}>(자동)</span></span>
-                </div>
-                {items.length === 0 ? (
-                  <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>확인할 체크 항목이 없습니다.</p>
-                ) : (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {items.map((it) => {
-                      const on = data.confirmed.includes(it.ref);
-                      return (
-                        <button
-                          key={it.ref}
-                          onClick={() => toggleConfirm(it.ref)}
-                          style={{
-                            display: "flex", alignItems: "center", gap: 6,
-                            border: `1px solid ${on ? "#6366f1" : "#cbd5e1"}`,
-                            background: on ? "#e0e7ff" : "#fff",
-                            borderRadius: 16, padding: "4px 10px", fontSize: 12, cursor: "pointer",
-                            color: on ? "#3730a3" : "#475569",
-                          }}
-                        >
-                          <span style={{ fontSize: 14 }}>{on ? "●" : "○"}</span>{it.label}
-                        </button>
-                      );
-                    })}
+
+                {/* 단계별 결재 코멘트 이력 */}
+                {(chain?.manager || chain?.safety || chain?.factory || chain?.rejected) && (
+                  <div style={{ fontSize: 12, color: "#475569", marginBottom: 10, display: "flex", flexDirection: "column", gap: 3 }}>
+                    {chain?.manager && <div>· 담당자 {chain.manager.by}: {chain.manager.comment || "(의견 없음)"}</div>}
+                    {chain?.safety && <div>· 환경안전 {chain.safety.by}: {chain.safety.comment || "(의견 없음)"}</div>}
+                    {chain?.factory && <div>· 공장장 {chain.factory.by}: {chain.factory.comment || "(의견 없음)"}</div>}
+                    {chain?.rejected && <div style={{ color: "#dc2626" }}>· 반려({STAGE_LABEL[chain.rejected.stage || ""] || chain.rejected.stage}) {chain.rejected.by}: {chain.rejected.reason}</div>}
                   </div>
                 )}
 
-                {/* 처리: 승인/반려/완료를 이 화면에서 일괄 수행 */}
-                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed #c7d2fe", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <strong style={{ fontSize: 13, color: "#3730a3" }}>처리</strong>
+                {/* 환경안전 단계: 검토자 선택 (시스템관리자) */}
+                {isSys && stageNow === "safety" && permitStatus === "submitted" && (
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 10 }}>
+                    검토자(환경안전):
+                    <select className="inp" value={data.admin.review.name || "박세현"} onChange={(e) => setReviewer(e.target.value)}>
+                      {SAFETY_REVIEWERS.map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </label>
+                )}
+
+                {/* 관리자 확인(●) — 시스템관리자, 제출 단계 */}
+                {isSys && permitStatus === "submitted" && items.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, color: "#64748b" }}>업체 체크 확인(●)</span>
+                      <button className="mini" onClick={confirmAll}>일괄</button>
+                      <button className="mini" onClick={clearConfirm}>해제</button>
+                      <button className="mini" onClick={handleSaveConfirm} disabled={saving} style={{ background: "#4f46e5", color: "#fff" }}>저장</button>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {items.map((it) => {
+                        const on = data.confirmed.includes(it.ref);
+                        return (
+                          <button key={it.ref} onClick={() => toggleConfirm(it.ref)} style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${on ? "#6366f1" : "#cbd5e1"}`, background: on ? "#e0e7ff" : "#fff", borderRadius: 16, padding: "4px 10px", fontSize: 12, cursor: "pointer", color: on ? "#3730a3" : "#475569" }}>
+                            <span style={{ fontSize: 14 }}>{on ? "●" : "○"}</span>{it.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 액션 */}
+                <div style={{ paddingTop: 10, borderTop: "1px dashed #c7d2fe", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <div style={{ flex: 1 }} />
                   {permitStatus === "submitted" ? (
-                    <>
-                      {!data.admin.review.name && (
-                        <span className="note note-warn" style={{ padding: "4px 10px", fontSize: 12 }}>
-                          <span className="ico">🔒</span> 검토자를 선택하면 승인할 수 있어요
-                        </span>
-                      )}
-                      <button className="mini btn-reject" onClick={handleReject} disabled={saving}>반려</button>
-                      <button
-                        className="mini btn-approve"
-                        onClick={handleApprove}
-                        disabled={saving || !data.admin.review.name}
-                        title={!data.admin.review.name ? "검토자(환경안전)를 먼저 선택하세요" : ""}
-                      >
-                        {saving ? "처리 중…" : "승인"}
-                      </button>
-                    </>
+                    canActNow ? (
+                      <>
+                        <button className="mini btn-reject" onClick={doReject} disabled={saving}>반려</button>
+                        <button className="mini btn-approve" onClick={doApprove} disabled={saving}>
+                          {saving ? "처리 중…" : (stageNow === "factory" ? "최종 승인" : "승인")}
+                        </button>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 12, color: "#94a3b8" }}>현재 ‘{STAGE_LABEL[stageNow || ""]}’ 단계 — 결재 권한이 없습니다.</span>
+                    )
                   ) : permitStatus === "approved" ? (
-                    <button className="mini btn-dark" onClick={handleComplete} disabled={saving}>{saving ? "처리 중…" : "작업완료 처리"}</button>
+                    isSys ? <button className="mini btn-dark" onClick={handleComplete} disabled={saving}>{saving ? "처리 중…" : "작업완료 처리"}</button>
+                      : <span style={{ fontSize: 12, color: "#15803d" }}>최종 승인 완료</span>
+                  ) : permitStatus === "rejected" ? (
+                    <>
+                      <span style={{ fontSize: 12, color: "#dc2626" }}>반려됨</span>
+                      {canResubmit && <button className="mini btn-approve" onClick={doResubmit} disabled={saving}>재상신</button>}
+                    </>
                   ) : (
-                    <span style={{ fontSize: 12, color: "#94a3b8" }}>
-                      {permitStatus === "rejected" ? "반려된 허가서입니다." : permitStatus === "completed" ? "완료된 허가서입니다." : "임시저장 상태입니다."}
-                    </span>
+                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{permitStatus === "completed" ? "완료된 허가서" : "임시저장"}</span>
                   )}
                 </div>
               </div>

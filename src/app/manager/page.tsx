@@ -52,8 +52,15 @@ export default function ManagerPage() {
     return <div className="loading"><span className="spinner" />불러오는 중…</div>;
   }
 
+  const STAGE_LABEL: Record<string, string> = { manager: "담당자 1차", safety: "환경안전", factory: "공장장 최종", done: "완료" };
+  const isMyTurn = (p: PermitRecord) =>
+    p.status === "submitted" && (
+      (user.managerKind === "requester" && p.stage === "manager") ||
+      (user.managerKind === "factory" && p.stage === "factory")
+    );
   const filtered = permits.filter((p) => filter === "all" || p.status === filter);
   const count = (s: PermitStatus) => permits.filter((p) => p.status === s).length;
+  const myTurnCount = permits.filter(isMyTurn).length;
 
   return (
     <div className="layout">
@@ -69,7 +76,7 @@ export default function ManagerPage() {
       <div className="page">
         <div className="page-head">
           <h2>결재함</h2>
-          <span className="sub">대기 {count("submitted")} · 승인 {count("approved")} · 반려 {count("rejected")} · 완료 {count("completed")}</span>
+          <span className="sub"><b style={{ color: "#b45309" }}>내 차례 {myTurnCount}</b> · 대기 {count("submitted")} · 승인 {count("approved")} · 반려 {count("rejected")} · 완료 {count("completed")}</span>
         </div>
 
         <div className="toolbar" style={{ flexWrap: "wrap" }}>
@@ -101,10 +108,14 @@ export default function ManagerPage() {
                     <td data-label="업체" style={{ fontWeight: 600 }}>{p.company || p.createdByEmail}</td>
                     <td data-label="작업내용" className="cell-ellipsis" style={{ maxWidth: 260 }}>{p.data.workContent || "-"}</td>
                     <td data-label="작업일자">{p.data.workDate || "-"}</td>
-                    <td data-label="상태"><span className={`chip chip-${p.status}`}>{STATUS_LABEL[p.status]}</span></td>
+                    <td data-label="상태">
+                      <span className={`chip chip-${p.status}`}>{STATUS_LABEL[p.status]}</span>
+                      {p.status === "submitted" && p.stage && <span style={{ fontSize: 11, color: "#64748b", marginLeft: 6 }}>{STAGE_LABEL[p.stage]}</span>}
+                      {isMyTurn(p) && <span className="chip chip-submitted" style={{ marginLeft: 6 }}>▶ 내 차례</span>}
+                    </td>
                     <td data-label="제출일시" style={{ fontSize: 12 }}>{tsToStr(p.submittedAt)}</td>
                     <td className="act">
-                      <button className="mini" onClick={() => router.push(`/fill?id=${p.id}`)}>보기</button>
+                      <button className={`mini ${isMyTurn(p) ? "btn-accent" : ""}`} onClick={() => router.push(`/fill?id=${p.id}`)}>{isMyTurn(p) ? "결재" : "보기"}</button>
                     </td>
                   </tr>
                 ))}

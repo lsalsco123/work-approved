@@ -122,6 +122,102 @@ exports.adminSetPassword = onCall(async (request) => {
 });
 
 /**
+ * 결재 진행 — 단계별 승인/반려/재상신. 서버에서 역할·단계 검증 후 전이.
+ * 단계: manager(담당자 1차) → safety(환경안전=admin) → factory(공장장) → 최종 approved.
+ * 권한: requester 담당자=본인 manager단계 / 공장장=factory단계 / 시스템관리자=모든 단계 override.
+ * 반려는 사유(comment) 필수 → status=rejected (담당자에게 반환). 재상신은 담당자/관리자가.
+ */
+exports.chainAction = onCall(async (request) => {
+  const callerUid = request.auth && request.auth.uid;
+  if (!callerUid) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+  const d = request.data || {};
+  const permitId = String(d.permitId || "").trim();
+  const action = String(d.action || "");
+  const comment = String(d.comment || "").trim();
+  const reviewerName = String(d.reviewerName || "").trim();
+  if (!permitId) throw new HttpsError("invalid-argument", "permitId 가 필요합니다.");
+  if (!["approve", "reject", "resubmit"].includes(action)) {
+    throw new HttpsError("invalid-argument", "action 이 올바르지 않습니다.");
+  }
+
+  const pref = db().collection("permits").doc(permitId);
+  const psnap = await pref.get();
+  if (!psnap.exists) throw new HttpsError("not-found", "허가서를 찾을 수 없습니다.");
+  const permit = psnap.data();
+  const usnap = await db().collection("users").doc(callerUid).get();
+  const u = usnap.exists ? usnap.data() : {};
+  const role = u.role || "guest";
+  const isSys = role === "admin";
+  const stage = permit.stage || "manager";
+  const reqMgr = (permit.data && permit.data.manager) || "";
+  const callerName = u.managerName || (isSys ? "시스템관리자" : "");
+  const isReqMgr = role === "manager" &&
+    u.managerKind === "requester" && u.managerName === reqMgr;
+
+  const canAtStage = (st) => {
+    if (isSys) return true; // override
+    if (role !== "manager") return false;
+    if (st === "manager") return isReqMgr;
+    if (st === "factory") return u.managerKind === "factory";
+    return false; // safety 단계는 시스템관리자 전담
+  };
+
+  // 재상신: 반려건을 담당자/관리자가 다시 결재 라인에 올림
+  if (action === "resubmit") {
+    if (permit.status !== "rejected") {
+      throw new HttpsError("failed-precondition", "반려 상태에서만 재상신할 수 있습니다.");
+    }
+    if (!(isSys || isReqMgr)) {
+      throw new HttpsError("permission-denied", "재상신 권한이 없습니다.");
+    }
+    await pref.update({
+      "status": "submitted", "stage": "manager",
+      "chain.rejected": null, "updatedAt": new Date().toISOString(),
+    });
+    return {ok: true, stage: "manager", status: "submitted"};
+  }
+
+  if (permit.status !== "submitted") {
+    throw new HttpsError("failed-precondition", "진행 중(제출됨) 건만 결재할 수 있습니다.");
+  }
+  if (!canAtStage(stage)) {
+    throw new HttpsError("permission-denied", "이 단계를 결재할 권한이 없습니다.");
+  }
+
+  const now = new Date().toISOString();
+  if (action === "reject") {
+    if (!comment) throw new HttpsError("invalid-argument", "반려 사유를 입력하세요.");
+    await pref.update({
+      "status": "rejected",
+      "chain.rejected": {stage, by: callerName, reason: comment, at: now},
+      "adminNote": comment, "updatedAt": now,
+    });
+    return {ok: true, status: "rejected"};
+  }
+
+  // approve: 단계 기록 + 다음 단계로 전이
+  const upd = {updatedAt: now};
+  upd[`chain.${stage}`] = {by: callerName, comment, at: now};
+  if (stage === "manager") {
+    upd["data.admin.issue.name"] = reqMgr;
+    upd.stage = "safety";
+  } else if (stage === "safety") {
+    upd["data.admin.review.name"] = reviewerName || "박세현";
+    upd["data.admin.review.dept"] = "환경안전";
+    upd.stage = "factory";
+  } else if (stage === "factory") {
+    upd["data.admin.approve.name"] = "이태훈";
+    upd["data.admin.approve.dept"] = "공장장";
+    upd.status = "approved";
+    upd.approvedBy = "이태훈";
+    upd.approvedAt = now;
+    upd.stage = "done";
+  }
+  await pref.update(upd);
+  return {ok: true, stage: upd.stage, status: upd.status || "submitted"};
+});
+
+/**
  * 계정 역할 분류: 업체(guest) / 관리자(manager) / 시스템관리자(admin).
  * 관리자는 managerKind(requester=담당자 / factory=공장장) + managerName 지정.
  * 시스템관리자(admin)는 최고 권한. 자기 자신의 역할은 바꿀 수 없다(자기 잠금 방지).

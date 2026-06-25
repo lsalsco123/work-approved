@@ -2,14 +2,24 @@ import {
   collection, doc, addDoc, updateDoc, getDoc, getDocs,
   query, where, orderBy, limit, serverTimestamp, Timestamp,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "./firebase";
 import { PermitData } from "./types";
 
 export type PermitStatus = "draft" | "submitted" | "approved" | "rejected" | "completed";
+export type ChainStage = "manager" | "safety" | "factory" | "done";
+
+export interface ChainEntry { by?: string; comment?: string; at?: string }
+export interface ChainRejected { stage?: string; by?: string; reason?: string; at?: string }
+export interface PermitChain {
+  manager?: ChainEntry; safety?: ChainEntry; factory?: ChainEntry; rejected?: ChainRejected | null;
+}
 
 export interface PermitRecord {
   id: string;
   status: PermitStatus;
+  stage?: ChainStage;
+  chain?: PermitChain;
   createdBy: string;
   createdByEmail: string;
   company: string;
@@ -19,6 +29,15 @@ export interface PermitRecord {
   data: PermitData;
   adminNote?: string;
   approvedBy?: string;
+}
+
+// 결재 액션(승인/반려/재상신) — 서버(chainAction)가 역할·단계 검증
+export async function chainAction(
+  permitId: string, action: "approve" | "reject" | "resubmit", comment = "", reviewerName = "",
+): Promise<{ stage?: ChainStage; status?: PermitStatus }> {
+  const fn = httpsCallable<unknown, { stage?: ChainStage; status?: PermitStatus }>(functions, "chainAction");
+  const res = await fn({ permitId, action, comment, reviewerName });
+  return res.data;
 }
 
 const COL = "permits";
@@ -39,7 +58,7 @@ export async function savePermit(
 
 export async function submitPermit(id: string): Promise<void> {
   await updateDoc(doc(db, COL, id), {
-    status: "submitted", submittedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    status: "submitted", stage: "manager", submittedAt: serverTimestamp(), updatedAt: serverTimestamp(),
   });
 }
 
