@@ -172,13 +172,18 @@ exports.chainAction = onCall(async (request) => {
     }
     await pref.update({
       "status": "submitted", "stage": "manager",
-      "chain.rejected": null, "updatedAt": new Date().toISOString(),
+      "chain": {}, "updatedAt": new Date().toISOString(),
     });
     return {ok: true, stage: "manager", status: "submitted"};
   }
 
   if (permit.status !== "submitted") {
     throw new HttpsError("failed-precondition", "진행 중(제출됨) 건만 결재할 수 있습니다.");
+  }
+  // 담당자(의뢰자) 미지정 건은 1차 결재 주체가 없으므로 시스템관리자만 처리 가능
+  if (stage === "manager" && !reqMgr && !isSys) {
+    throw new HttpsError("failed-precondition",
+        "담당자(의뢰자)가 지정되지 않은 건입니다. 업체가 담당자를 지정해 재제출해야 합니다.");
   }
   if (!canAtStage(stage)) {
     throw new HttpsError("permission-denied", "이 단계를 결재할 권한이 없습니다.");

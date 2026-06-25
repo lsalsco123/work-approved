@@ -95,6 +95,11 @@ function nameVal(ref: string, name: string): TextItem {
   const b = cell(ref);
   return txt(ref, name, { x: b.x + b.w * 0.05, w: b.w * 0.34, align: "center", valign: "middle", fontPt: 6.5 });
 }
+// 인쇄된 라벨("○○ :") 뒤, "(인)" 앞 빈칸에 값만 기입 (라벨 이중 인쇄 방지)
+function afterLabel(ref: string, value: string, startFrac: number, wFrac: number, fontPt = 6.5): TextItem {
+  const b = cell(ref);
+  return txt(ref, value, { x: b.x + b.w * startFrac, w: b.w * wFrac, align: "left", valign: "middle", fontPt });
+}
 
 function squareMark(ref: string): MarkItem | null {
   const m = MARKS[ref]; if (!m) return null;
@@ -272,12 +277,13 @@ export function buildOverlays(data: PermitData): Overlay[] {
     const fm = cell("K63");
     push(txt("K63", "박세현", { x: fm.x + fm.w * 0.48, w: fm.w * 0.20, align: "left", valign: "middle", fontPt: 6.5 }));
   }
-  if (selWT("confined") && data.confinedWatcher) push(txt("G71", `감시인 : ${data.confinedWatcher}`, { fontPt: 6.5 }));
-  if (selWT("electrical") && data.electricalCutoffTime) push(txt("E77", `차단시간 : ${data.electricalCutoffTime}`, { fontPt: 6.5 }));
-  if (selWT("electrical") && data.electricalCutoffPerson) push(txt("I77", `차단인 : ${data.electricalCutoffPerson}`, { fontPt: 6.5 }));
-  if (selWT("excavation") && data.excavationBuriedChecker) push(txt("G87", `매설확인자 : ${data.excavationBuriedChecker}`, { fontPt: 6.5 }));
-  if (selWT("heavy") && data.heavySignaler) push(txt("U1", `신호수/유도자 : ${data.heavySignaler}`, { fontPt: 6.5 }));
-  if (selWT("heavy") && data.heavyEquipType) push(txt("AA5", data.heavyEquipType, { fontPt: 6.5 }));
+  // 인쇄된 라벨 뒤에 값만 기입 (이중 겹침 방지)
+  if (selWT("confined") && data.confinedWatcher) push(afterLabel("G71", data.confinedWatcher, 0.22, 0.5));
+  if (selWT("electrical") && data.electricalCutoffTime) push(afterLabel("E77", data.electricalCutoffTime, 0.42, 0.55));
+  if (selWT("electrical") && data.electricalCutoffPerson) push(afterLabel("I77", data.electricalCutoffPerson, 0.24, 0.45));
+  if (selWT("excavation") && data.excavationBuriedChecker) push(afterLabel("G87", data.excavationBuriedChecker, 0.28, 0.5));
+  if (selWT("heavy") && data.heavySignaler) push(afterLabel("U1", data.heavySignaler, 0.42, 0.5));
+  if (selWT("heavy") && data.heavyEquipType) { const ab = cell("AA5"); push(txt("AA5", data.heavyEquipType, { x: ab.x, w: 0.14, align: "left", valign: "middle", fontPt: 6.5 })); }
 
   // ② 일반작업 구역 작업감독자(G55) = 업체 작업감독자(C7)와 동일 ("작업감독자 :" 와 "(인)" 사이)
   if (data.supervisor) {

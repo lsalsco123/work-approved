@@ -57,8 +57,10 @@ export async function savePermit(
 }
 
 export async function submitPermit(id: string): Promise<void> {
+  // (재)제출 시 결재 단계를 manager 로 초기화하고 이전 결재 이력(chain)을 비운다.
   await updateDoc(doc(db, COL, id), {
-    status: "submitted", stage: "manager", submittedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    status: "submitted", stage: "manager", chain: {},
+    submittedAt: serverTimestamp(), updatedAt: serverTimestamp(),
   });
 }
 
