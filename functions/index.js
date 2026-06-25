@@ -6,12 +6,15 @@
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {setGlobalOptions} = require("firebase-functions/v2");
 const admin = require("firebase-admin");
+const {getFirestore} = require("firebase-admin/firestore");
 
 admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
 
+// 이 프로젝트의 Firestore 는 named DB "default" (클라 getFirestore(app,"default") 와 일치).
+// admin.firestore() 의 기본 "(default)" 가 아니라 named DB 를 명시해야 한다.
 const auth = () => admin.auth();
-const db = () => admin.firestore();
+const db = () => getFirestore("default");
 
 /**
  * 호출자가 admin 인지 검증한다. 아니면 throw.
