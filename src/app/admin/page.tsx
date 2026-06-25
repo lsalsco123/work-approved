@@ -8,6 +8,10 @@ import {
 import { listTemplates, deleteTemplate, createTemplate, PermitTemplate } from "@/lib/templates";
 import { listCompanyAccounts, adminApprove, adminSetBlocked, adminSetPassword, sendResetEmail, CompanyAccount } from "@/lib/accounts";
 import { DEFAULT_TEMPLATES } from "@/lib/samples";
+import { listJsaRefs, getJsaRef, saveJsaRef, deleteJsaRef } from "@/lib/jsaRefs";
+import { WORK_TYPES } from "@/lib/form";
+import { JsaRow } from "@/lib/types";
+import JsaEditor from "@/components/JsaEditor";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
   draft: "임시저장",
@@ -124,6 +128,42 @@ export default function AdminPage() {
   const pending = accounts.filter((a) => a.status === "pending");
   const others = accounts.filter((a) => a.status !== "pending");
 
+  // 작업형태별 JSA 레퍼런스 관리
+  const [refTypes, setRefTypes] = useState<string[]>([]);     // 레퍼런스가 등록된 작업형태 키
+  const [refWT, setRefWT] = useState<string>("");             // 편집 중인 작업형태
+  const [refRows, setRefRows] = useState<JsaRow[]>([]);
+  const [refBusy, setRefBusy] = useState(false);
+
+  const fetchRefTypes = async () => {
+    try { setRefTypes((await listJsaRefs()).map((r) => r.workType)); }
+    catch (e) { console.error("JSA 레퍼런스 목록 조회 실패:", e); }
+  };
+  useEffect(() => { if (user?.role === "admin") fetchRefTypes(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectRefWT = async (wt: string) => {
+    setRefWT(wt);
+    if (!wt) { setRefRows([]); return; }
+    setRefBusy(true);
+    try { const r = await getJsaRef(wt); setRefRows(r?.rows ?? []); }
+    catch { setRefRows([]); }
+    finally { setRefBusy(false); }
+  };
+  const saveRef = async () => {
+    if (!refWT || !user) return;
+    setRefBusy(true);
+    try { await saveJsaRef(refWT, refRows, user.email); alert("JSA 레퍼런스를 저장했습니다."); await fetchRefTypes(); }
+    catch (e) { alert("저장 실패: " + ((e as Error)?.message ?? String(e))); }
+    finally { setRefBusy(false); }
+  };
+  const removeRef = async () => {
+    if (!refWT || !confirm("이 작업형태의 JSA 레퍼런스를 삭제할까요?")) return;
+    setRefBusy(true);
+    try { await deleteJsaRef(refWT); setRefRows([]); await fetchRefTypes(); }
+    catch (e) { alert("삭제 실패: " + ((e as Error)?.message ?? String(e))); }
+    finally { setRefBusy(false); }
+  };
+  const refWTLabel = (wt: string) => WORK_TYPES.find((w) => w.v === wt)?.label.split(" (")[0] ?? wt;
+
   const count = (s: PermitStatus) => permits.filter((p) => p.status === s).length;
 
   const filtered = permits.filter((p) => {
@@ -233,6 +273,42 @@ export default function AdminPage() {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+
+        <div className="panel">
+          <div className="panel-head">
+            <span className="panel-title" style={{ color: "#0d9488" }}>작업형태별 JSA 레퍼런스</span>
+            <span className="panel-sub">작업형태마다 미리 작성해두면 업체가 작성 화면에서 “레퍼런스 불러오기”로 채웁니다.</span>
+          </div>
+          <div className="form-row" style={{ alignItems: "center" }}>
+            <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <span>작업형태</span>
+              <select className="inp" style={{ width: 200 }} value={refWT} onChange={(e) => selectRefWT(e.target.value)}>
+                <option value="">선택…</option>
+                {WORK_TYPES.filter((w) => w.v !== "etc").map((w) => (
+                  <option key={w.v} value={w.v}>{w.label.split(" (")[0]}{refTypes.includes(w.v) ? " ✓" : ""}</option>
+                ))}
+              </select>
+            </label>
+            {refWT && (
+              <>
+                <button className="mini btn-accent" disabled={refBusy} onClick={saveRef}>{refBusy ? "처리 중…" : "저장"}</button>
+                {refTypes.includes(refWT) && <button className="mini danger" disabled={refBusy} onClick={removeRef}>삭제</button>}
+              </>
+            )}
+          </div>
+          {refWT ? (
+            <div style={{ marginTop: 4 }}>
+              <p style={{ margin: "0 0 6px", fontSize: 12, color: "#64748b" }}>
+                <b>{refWTLabel(refWT)}</b> 레퍼런스 — 단계/작업종류는 자유 입력입니다(이 영역은 관리자 작성용).
+              </p>
+              <JsaEditor rows={refRows} onChange={setRefRows} />
+            </div>
+          ) : (
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
+              작업형태를 선택하면 해당 JSA 레퍼런스를 작성/수정할 수 있습니다. {refTypes.length > 0 && `(등록됨: ${refTypes.map(refWTLabel).join(", ")})`}
+            </p>
           )}
         </div>
 
