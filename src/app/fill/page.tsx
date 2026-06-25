@@ -237,11 +237,6 @@ function FillInner() {
     }
   };
 
-  const syncDates = () => {
-    const d = data.workDate;
-    setData((p) => ({ ...p, applicantDate: d, representativeSignDate: d }));
-  };
-
   // 예시 양식 저장 (관리자 전용)
   const handleSaveTemplate = async () => {
     if (!user || user.role !== "admin") { alert("관리자만 예시 양식을 저장할 수 있습니다."); return; }
@@ -549,7 +544,6 @@ function FillInner() {
               <Row label="종료시간"><Text value={data.endTime} onChange={(v) => update("endTime", v)} type="time" readOnly={isReadOnly} /></Row>
             </div>
             <Row label="작업내용" required><Area value={data.workContent} onChange={(v) => update("workContent", v)} readOnly={isReadOnly} /></Row>
-            {!isReadOnly && <button className="mini" onClick={syncDates}>신청 날짜를 작업일자로 동기화</button>}
           </Section>
 
           <Section title="⑦ 작업형태 (복수 선택)">
@@ -568,51 +562,72 @@ function FillInner() {
             {data.gear.includes("기타") && <Row label="기타 보호구"><Text value={data.gearEtc} onChange={(v) => update("gearEtc", v)} readOnly={isReadOnly} /></Row>}
           </Section>
 
-          <Section title="② 일반작업 (공통사항)" defaultOpen={false}>
-            <CheckGroup options={GENERAL} selected={data.general} onToggle={(v) => toggleIn("general", v)} cols={1} readOnly={isReadOnly} />
-          </Section>
+          {/* ②~⑨ : 위에서 선택한 작업형태의 체크리스트만 노출 */}
+          {data.workTypes.length === 0 && !isReadOnly && (
+            <p className="muted" style={{ padding: "0 4px" }}>※ 위 <b>작업형태</b>를 먼저 선택하면 해당 작업의 체크리스트가 나타납니다.</p>
+          )}
 
-          <Section title="③ 화기작업" defaultOpen={false}>
-            <CheckGroup options={HOT} selected={data.hot} onToggle={(v) => toggleIn("hot", v)} cols={1} readOnly={isReadOnly} />
-            <div className="tworow">
-              <Row label="화재감시자"><Text value={data.hotFireWatcher} onChange={(v) => update("hotFireWatcher", v)} readOnly={isReadOnly} /></Row>
-              <Row label="소방안전관리자"><Text value={data.hotFireManager} onChange={(v) => update("hotFireManager", v)} readOnly={isReadOnly} /></Row>
-            </div>
-          </Section>
+          {data.workTypes.includes("general") && (
+            <Section title="② 일반작업 (공통사항)">
+              <CheckGroup options={GENERAL} selected={data.general} onToggle={(v) => toggleIn("general", v)} cols={1} readOnly={isReadOnly} />
+            </Section>
+          )}
 
-          <Section title="④ 밀폐공간작업" defaultOpen={false}>
-            <CheckGroup options={CONFINED} selected={data.confined} onToggle={(v) => toggleIn("confined", v)} cols={1} readOnly={isReadOnly} />
-            <Row label="감시인"><Text value={data.confinedWatcher} onChange={(v) => update("confinedWatcher", v)} readOnly={isReadOnly} /></Row>
-          </Section>
+          {data.workTypes.includes("hot") && (
+            <Section title="③ 화기작업">
+              <CheckGroup options={HOT} selected={data.hot} onToggle={(v) => toggleIn("hot", v)} cols={1} readOnly={isReadOnly} />
+              <div className="tworow">
+                <Row label="화재감시자"><Text value={data.hotFireWatcher} onChange={(v) => update("hotFireWatcher", v)} readOnly={isReadOnly} /></Row>
+                <Row label="소방안전관리자" hint="고정"><Text value="박세현" onChange={() => {}} readOnly /></Row>
+              </div>
+            </Section>
+          )}
 
-          <Section title="⑤ 전기차단(정전)작업" defaultOpen={false}>
-            <CheckGroup options={ELECTRICAL} selected={data.electrical} onToggle={(v) => toggleIn("electrical", v)} cols={1} readOnly={isReadOnly} />
-            <div className="tworow">
-              <Row label="차단시간"><Text value={data.electricalCutoffTime} onChange={(v) => update("electricalCutoffTime", v)} readOnly={isReadOnly} /></Row>
-              <Row label="차단인"><Text value={data.electricalCutoffPerson} onChange={(v) => update("electricalCutoffPerson", v)} readOnly={isReadOnly} /></Row>
-            </div>
-          </Section>
+          {data.workTypes.includes("confined") && (
+            <Section title="④ 밀폐공간작업">
+              <CheckGroup options={CONFINED} selected={data.confined} onToggle={(v) => toggleIn("confined", v)} cols={1} readOnly={isReadOnly} />
+              <Row label="감시인"><Text value={data.confinedWatcher} onChange={(v) => update("confinedWatcher", v)} readOnly={isReadOnly} /></Row>
+            </Section>
+          )}
 
-          <Section title="⑥ 고소작업" defaultOpen={false}>
-            <CheckGroup options={ELEVATED} selected={data.elevated} onToggle={(v) => toggleIn("elevated", v)} cols={1} readOnly={isReadOnly} />
-          </Section>
+          {data.workTypes.includes("electrical") && (
+            <Section title="⑤ 전기차단(정전)작업">
+              <CheckGroup options={ELECTRICAL} selected={data.electrical} onToggle={(v) => toggleIn("electrical", v)} cols={1} readOnly={isReadOnly} />
+              <div className="tworow">
+                <Row label="차단시간"><Text value={data.electricalCutoffTime} onChange={(v) => update("electricalCutoffTime", v)} readOnly={isReadOnly} /></Row>
+                <Row label="차단인"><Text value={data.electricalCutoffPerson} onChange={(v) => update("electricalCutoffPerson", v)} readOnly={isReadOnly} /></Row>
+              </div>
+            </Section>
+          )}
 
-          <Section title="⑦ 굴착작업" defaultOpen={false}>
-            <CheckGroup options={EXCAVATION} selected={data.excavation} onToggle={(v) => toggleIn("excavation", v)} cols={1} readOnly={isReadOnly} />
-            <Row label="매설확인자"><Text value={data.excavationBuriedChecker} onChange={(v) => update("excavationBuriedChecker", v)} readOnly={isReadOnly} /></Row>
-          </Section>
+          {data.workTypes.includes("elevated") && (
+            <Section title="⑥ 고소작업">
+              <CheckGroup options={ELEVATED} selected={data.elevated} onToggle={(v) => toggleIn("elevated", v)} cols={1} readOnly={isReadOnly} />
+            </Section>
+          )}
 
-          <Section title="⑧ 중장비취급작업" defaultOpen={false}>
-            <CheckGroup options={HEAVY} selected={data.heavy} onToggle={(v) => toggleIn("heavy", v)} cols={1} readOnly={isReadOnly} />
-            <div className="tworow">
-              <Row label="신호수/유도자"><Text value={data.heavySignaler} onChange={(v) => update("heavySignaler", v)} readOnly={isReadOnly} /></Row>
-              <Row label="장비종류"><Text value={data.heavyEquipType} onChange={(v) => update("heavyEquipType", v)} readOnly={isReadOnly} /></Row>
-            </div>
-          </Section>
+          {data.workTypes.includes("excavation") && (
+            <Section title="⑦ 굴착작업">
+              <CheckGroup options={EXCAVATION} selected={data.excavation} onToggle={(v) => toggleIn("excavation", v)} cols={1} readOnly={isReadOnly} />
+              <Row label="매설확인자"><Text value={data.excavationBuriedChecker} onChange={(v) => update("excavationBuriedChecker", v)} readOnly={isReadOnly} /></Row>
+            </Section>
+          )}
 
-          <Section title="⑨ 방사능작업" defaultOpen={false}>
-            <CheckGroup options={RADIATION} selected={data.radiation} onToggle={(v) => toggleIn("radiation", v)} cols={1} readOnly={isReadOnly} />
-          </Section>
+          {data.workTypes.includes("heavy") && (
+            <Section title="⑧ 중장비취급작업">
+              <CheckGroup options={HEAVY} selected={data.heavy} onToggle={(v) => toggleIn("heavy", v)} cols={1} readOnly={isReadOnly} />
+              <div className="tworow">
+                <Row label="신호수/유도자"><Text value={data.heavySignaler} onChange={(v) => update("heavySignaler", v)} readOnly={isReadOnly} /></Row>
+                <Row label="장비종류"><Text value={data.heavyEquipType} onChange={(v) => update("heavyEquipType", v)} readOnly={isReadOnly} /></Row>
+              </div>
+            </Section>
+          )}
+
+          {data.workTypes.includes("radiation") && (
+            <Section title="⑨ 방사능작업">
+              <CheckGroup options={RADIATION} selected={data.radiation} onToggle={(v) => toggleIn("radiation", v)} cols={1} readOnly={isReadOnly} />
+            </Section>
+          )}
 
           <Section title="⑪ 에너지원 안전잠금장치">
             <RadioGroup
@@ -643,7 +658,12 @@ function FillInner() {
               <Row label="작성자/담당자"><Text value={data.worksheetAuthor} onChange={(v) => update("worksheetAuthor", v)} readOnly={isReadOnly} /></Row>
               <Row label="위험성평가 참여자"><Text value={data.riskParticipants} onChange={(v) => update("riskParticipants", v)} readOnly={isReadOnly} /></Row>
             </div>
-            <JsaEditor rows={data.jsa} onChange={(r) => update("jsa", r)} readOnly={isReadOnly} />
+            <JsaEditor
+              rows={data.jsa}
+              onChange={(r) => update("jsa", r)}
+              readOnly={isReadOnly}
+              stepOptions={WORK_TYPES.filter((w) => data.workTypes.includes(w.v)).map((w) => w.label.split(" (")[0])}
+            />
           </Section>
 
           <Section title="환경안전 교육실시 및 서약">

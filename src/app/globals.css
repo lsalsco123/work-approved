@@ -104,6 +104,22 @@ body {
 .formcol { flex: 0 0 520px; max-width: 520px; }
 .previewcol { flex: 1; position: sticky; top: 64px; }
 
+/* 데스크톱: 좌측 입력 / 우측 미리보기 각각 독립 스크롤 */
+@media (min-width: 901px) {
+  .layout { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  .body { flex: 1; min-height: 0; overflow: hidden; align-items: stretch; width: 100%; }
+  .formcol { overflow-y: auto; height: 100%; padding-right: 6px; }
+  .previewcol { position: static; top: auto; overflow-y: auto; height: 100%; }
+}
+
+/* JSA 참고표 모달 테이블 */
+.ref-tbl { border-collapse: collapse; font-size: 12px; flex: 1; min-width: 230px; }
+.ref-tbl th, .ref-tbl td { border: 1px solid #cbd5e1; padding: 5px 8px; }
+.ref-tbl th { background: #f1f5f9; }
+.ref-matrix { border-collapse: collapse; font-size: 12px; width: 100%; }
+.ref-matrix th, .ref-matrix td { border: 1px solid #cbd5e1; padding: 6px 4px; }
+.ref-matrix th { background: #f1f5f9; font-size: 11px; white-space: nowrap; }
+
 .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
 .mini { padding: 5px 10px; font-size: 12px; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer; }
 .mini.danger { color: #b91c1c; border-color: #fca5a5; }
@@ -383,8 +399,9 @@ button.btn-accent:disabled { background: #94a3b8; cursor: not-allowed; }
   @page { size: A4 landscape; margin: 0; }
   body { background: #fff; }
   .no-print { display: none !important; }
-  .body { display: block; padding: 0; margin: 0; max-width: none; }
-  .previewcol { position: static; flex: none; }
+  .layout { height: auto; overflow: visible; display: block; }
+  .body { display: block; padding: 0; margin: 0; max-width: none; overflow: visible; height: auto; }
+  .previewcol { position: static; flex: none; overflow: visible; height: auto; }
   .permit-doc { gap: 0; }
   .permit-page {
     width: 100vw; height: 100vh;
