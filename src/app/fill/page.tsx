@@ -30,7 +30,7 @@ const STATUS_LABEL: Record<PermitStatus, { text: string; color: string }> = {
 function FillInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
   const cloudId = searchParams.get("id");
   // 관리자 예시 양식 편집 모드: ?template=<id>(수정) / ?templateNew=1(신규)
   const templateId = searchParams.get("template");
@@ -103,6 +103,14 @@ function FillInner() {
     if (templateMode) return;
     listTemplates().then(setTemplates).catch(() => {});
   }, [templateMode]);
+
+  // 인증 가드: 로그인하지 않은 사용자는 내부 양식을 볼 수 없도록 로그인 페이지로 이동
+  useEffect(() => {
+    if (!authLoading && !user) router.replace("/login");
+  }, [authLoading, user, router]);
+
+  // 인증 확인 중이거나 미로그인(리다이렉트 대기) 상태에서는 내부 UI를 렌더하지 않음
+  if (authLoading || !user) return <div className="loading"><span className="spinner" />불러오는 중…</div>;
 
   if (!loaded || !cloudLoaded) return <div className="loading"><span className="spinner" />불러오는 중…</div>;
 

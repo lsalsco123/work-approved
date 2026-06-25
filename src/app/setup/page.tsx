@@ -1,13 +1,22 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { useAuth } from "@/lib/auth";
 
 export default function SetupPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const [status, setStatus] = useState<string[]>([]);
   const [done, setDone] = useState(false);
   const [running, setRunning] = useState(false);
+
+  // 초기 설정(게스트 계정 생성)은 관리자 전용. 로그아웃/게스트는 접근 불가.
+  useEffect(() => {
+    if (!loading && (!user || user.role !== "admin")) router.replace("/login");
+  }, [user, loading, router]);
 
   const log = (msg: string) => setStatus((s) => [...s, msg]);
 
@@ -52,11 +61,15 @@ export default function SetupPage() {
     setRunning(false);
   };
 
+  if (loading || !user || user.role !== "admin") {
+    return <div className="loading"><span className="spinner" />불러오는 중…</div>;
+  }
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
       <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 32, width: 480, boxShadow: "0 4px 20px rgba(0,0,0,.08)" }}>
         <h1 style={{ margin: "0 0 8px", fontSize: 18, color: "#0a2240" }}>초기 설정</h1>
-        <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>게스트 계정(아이디: 게스트 / 비밀번호: guest1234)을 생성합니다.</p>
+        <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>게스트 계정을 생성합니다. (관리자 전용)</p>
 
         {!done && (
           <button
