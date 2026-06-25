@@ -70,21 +70,16 @@ const PROJECT_ID = process.env.NEXT_PUBLIC_FB_PROJECT_ID;
 // 반환: 발송 허용 시 true, 그 외(비소유·비admin·문서없음·네트워크예외) false.
 async function isOwnerOrAdmin(idToken: string, uid: string, permitId: string): Promise<boolean> {
   if (!PROJECT_ID) return false;
-  const base = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+  // 이 프로젝트 Firestore 는 named DB "default" (기본 "(default)" 아님)
+  const base = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/default/documents`;
   try {
-    // 1) 해당 permit 문서를 호출자 토큰으로 조회 → rules 가 권한을 강제
+    // 해당 permit 을 호출자 토큰으로 조회 → rules 가 권한을 강제.
+    // 읽기에 성공(200)하면 소유자(업체)·시스템관리자·결재라인 관리자 중 하나이므로 발송 허용.
     const permitRes = await fetch(`${base}/permits/${encodeURIComponent(permitId)}`, {
       headers: { Authorization: `Bearer ${idToken}` },
     });
-    // 200 이 아니면 읽기 거부(비소유/비admin) 또는 문서 없음 → 발송 거부
-    if (permitRes.ok) {
-      const doc = await permitRes.json();
-      const createdBy = doc?.fields?.createdBy?.stringValue;
-      // 소유자(createdBy === 호출자 uid)면 허용
-      if (typeof createdBy === "string" && createdBy === uid) return true;
-    }
-    // 2) 소유자가 아니거나 permit 읽기에 실패해도, 호출자가 admin 이면 허용
-    //    users/{uid} 문서를 같은 방식으로 읽어 role 확인
+    if (permitRes.ok) return true;
+    // 읽기 실패 시에도 admin 이면 허용 (방어적)
     const userRes = await fetch(`${base}/users/${encodeURIComponent(uid)}`, {
       headers: { Authorization: `Bearer ${idToken}` },
     });
@@ -94,7 +89,6 @@ async function isOwnerOrAdmin(idToken: string, uid: string, permitId: string): P
     }
     return false;
   } catch {
-    // 네트워크 예외 등은 안전하게 거부
     return false;
   }
 }
@@ -289,34 +283,68 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
     }
 
-    // 담당자(의뢰자) 알림: 선택된 담당자 이메일을 수신자에 추가 (서버측 매핑)
+    // 결재 단계별 알림(kind) — 수신자/제목/안내문 분기
+    const kind: string = body.kind || "submit";
+    const reason: string = body.reason || "";
     const managerName: string = (permitData?.manager as string) || "";
     const managerEmail = managerName ? MANAGER_EMAILS[managerName] : undefined;
-    const recipients = Array.from(new Set([NOTIFY_TO, ...(managerEmail ? [managerEmail] : [])]));
+    const FACTORY_EMAIL = process.env.FACTORY_EMAIL ?? NOTIFY_TO; // 공장장(이태훈) 메일 — 미설정 시 NOTIFY_EMAIL
+    const co = company || "업체";
+    const wc = (workContent || "").slice(0, 40) || "작업내용 없음";
+    const both = Array.from(new Set([NOTIFY_TO, ...(managerEmail ? [managerEmail] : [])]));
 
-    const subject = `[작업허가서 제출] ${company || "업체명 미입력"} — ${workContent?.slice(0, 40) || "작업내용 없음"}`;
+    let recipients: string[];
+    let subject: string;
+    let headline: string;
+    let intro: string;
+    if (kind === "to_safety") {
+      recipients = [NOTIFY_TO];
+      subject = `[결재요청·환경안전] ${co} — ${wc}`;
+      headline = "환경안전 결재 요청";
+      intro = "담당자 1차 결재가 완료되었습니다. 환경안전 결재를 진행해 주세요.";
+    } else if (kind === "to_factory") {
+      recipients = [FACTORY_EMAIL];
+      subject = `[결재요청·공장장] ${co} — ${wc}`;
+      headline = "공장장 최종 결재 요청";
+      intro = "환경안전 결재가 완료되었습니다. 공장장 최종 결재를 진행해 주세요.";
+    } else if (kind === "final") {
+      recipients = both;
+      subject = `[최종 결재 완료] ${co} — ${wc}`;
+      headline = "최종 결재 완료";
+      intro = `${co}의 「${workContent || "작업"}」 건의 최종 결재가 완료되었습니다. 출력하여 업체에 전달해 주세요.`;
+    } else if (kind === "reject") {
+      recipients = Array.from(new Set([managerEmail || NOTIFY_TO]));
+      subject = `[반려] ${co} — ${wc}`;
+      headline = "결재 반려";
+      intro = `해당 작업허가서가 반려되었습니다.${reason ? ` (사유: ${reason})` : ""}`;
+    } else { // submit
+      recipients = both;
+      subject = `[작업허가서 제출] ${co} — ${wc}`;
+      headline = "작업허가서 제출 — 담당자 결재 필요";
+      intro = "새 작업허가서가 제출되었습니다. 담당자 1차 결재를 진행해 주세요.";
+    }
 
     const emailHtml = `
 <div style="font-family:'맑은 고딕',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
   <div style="background:#0a2240;padding:20px 24px;border-bottom:3px solid #e07b00;">
-    <h2 style="margin:0;color:#fff;font-size:17px;">환경안전 작업허가서 — 제출 알림</h2>
+    <h2 style="margin:0;color:#fff;font-size:17px;">환경안전 작업허가서 — ${esc(headline)}</h2>
     <p style="margin:4px 0 0;color:rgba(255,255,255,.65);font-size:12px;">LS Alsco 전산 발급 시스템</p>
   </div>
   <div style="padding:24px;">
+    <p style="margin:0 0 16px;font-size:14px;color:#1e293b;font-weight:600;">${esc(intro)}</p>
     <table style="width:100%;border-collapse:collapse;font-size:14px;">
-      <tr><td style="padding:8px 0;color:#64748b;width:100px;">업체명</td><td style="padding:8px 0;font-weight:600;">${company || "-"}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">작업내용</td><td style="padding:8px 0;">${workContent || "-"}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">작업일자</td><td style="padding:8px 0;">${workDate || "-"}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">작업시간</td><td style="padding:8px 0;">${startTime || "-"} ~ ${endTime || "-"}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">작업감독자</td><td style="padding:8px 0;">${supervisor || "-"}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">담당자(의뢰자)</td><td style="padding:8px 0;font-weight:600;">${managerName || "-"}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;width:100px;">업체명</td><td style="padding:8px 0;font-weight:600;">${esc(company) || "-"}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">작업내용</td><td style="padding:8px 0;">${esc(workContent) || "-"}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">작업일자</td><td style="padding:8px 0;">${esc(workDate) || "-"}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">작업시간</td><td style="padding:8px 0;">${esc(startTime) || "-"} ~ ${esc(endTime) || "-"}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">작업감독자</td><td style="padding:8px 0;">${esc(supervisor) || "-"}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748b;">담당자(의뢰자)</td><td style="padding:8px 0;font-weight:600;">${esc(managerName) || "-"}</td></tr>
     </table>
-    <p style="margin:16px 0 4px;font-size:13px;color:#64748b;">첨부 파일에서 전체 작업허가서 내용을 확인하실 수 있습니다.</p>
     ${permitId ? `
     <div style="margin-top:16px;">
-      <a href="${process.env.NEXT_PUBLIC_APP_URL ?? "https://work-approved.vercel.app"}/fill?id=${permitId}"
+      <a href="${process.env.NEXT_PUBLIC_APP_URL ?? "https://work-approved.vercel.app"}/fill?id=${esc(permitId)}"
          style="display:inline-block;padding:10px 20px;background:#003377;color:#fff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">
-        온라인에서 보기/출력 →
+        ${kind === "final" ? "출력/확인하기 →" : "결재/확인하기 →"}
       </a>
     </div>` : ""}
   </div>

@@ -311,6 +311,22 @@ function FillInner() {
 
   // 결재 처리 — 단계별 승인/반려/재상신 (서버 chainAction 이 권한·단계 검증)
   const backList = () => router.push(user?.role === "admin" ? "/admin" : "/manager");
+  // 단계별 알림 메일 (비차단 — 실패해도 결재 흐름은 유지)
+  const postNotify = async (kind: string, reason = "") => {
+    if (!permitId) return;
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      await fetch("/api/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          kind, reason, permitId, permitData: data,
+          company: data.company, workContent: data.workContent, workDate: data.workDate,
+          startTime: data.startTime, endTime: data.endTime, supervisor: data.supervisor,
+        }),
+      });
+    } catch (e) { console.error("notify 실패:", e); }
+  };
   const doApprove = async () => {
     if (!permitId) return;
     // 환경안전(safety) 단계는 검토자명 필요(기본 박세현)
@@ -320,9 +336,12 @@ function FillInner() {
     }
     const comment = window.prompt("결재 의견 (선택 — 담당자 1차는 공사 내용을 적어 올리세요. 공장장 승인은 생략 가능):", "");
     if (comment === null) return;
+    const prevStage = permitStage || "manager";
     setSaving(true);
     try {
       const r = await chainAction(permitId, "approve", comment.trim(), reviewerName);
+      const kind = prevStage === "manager" ? "to_safety" : prevStage === "safety" ? "to_factory" : "final";
+      await postNotify(kind);
       alert(r.status === "approved" ? "최종 승인되었습니다." : "승인하여 다음 단계로 넘겼습니다.");
       backList();
     } catch (e) { alert("처리 실패: " + ((e as Error)?.message ?? String(e))); }
@@ -336,6 +355,7 @@ function FillInner() {
     setSaving(true);
     try {
       await chainAction(permitId, "reject", reason.trim());
+      await postNotify("reject", reason.trim());
       alert("반려되었습니다. 담당자에게 반환됩니다.");
       backList();
     } catch (e) { alert("반려 실패: " + ((e as Error)?.message ?? String(e))); }
