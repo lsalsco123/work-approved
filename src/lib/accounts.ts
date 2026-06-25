@@ -61,8 +61,8 @@ export async function adminApprove(uid: string): Promise<void> {
   await httpsCallable(functions, "adminApprove")({ uid });
 }
 
-export async function adminSetBlocked(uid: string, blocked: boolean): Promise<void> {
-  await httpsCallable(functions, "adminSetBlocked")({ uid, blocked });
+export async function adminDeleteAccount(uid: string): Promise<void> {
+  await httpsCallable(functions, "adminDeleteAccount")({ uid });
 }
 
 export async function adminSetPassword(uid: string, password: string): Promise<void> {

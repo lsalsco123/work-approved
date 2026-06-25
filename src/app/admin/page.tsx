@@ -6,7 +6,7 @@ import {
   listAllPermits, PermitRecord, PermitStatus,
 } from "@/lib/permits";
 import { listTemplates, deleteTemplate, createTemplate, PermitTemplate } from "@/lib/templates";
-import { listCompanyAccounts, adminApprove, adminSetBlocked, adminSetPassword, adminSetRole, sendResetEmail, CompanyAccount } from "@/lib/accounts";
+import { listCompanyAccounts, adminApprove, adminDeleteAccount, adminSetPassword, adminSetRole, sendResetEmail, CompanyAccount } from "@/lib/accounts";
 import { MANAGERS } from "@/lib/managers";
 import { DEFAULT_TEMPLATES } from "@/lib/samples";
 import { listJsaRefs, getJsaRef, saveJsaRef, deleteJsaRef } from "@/lib/jsaRefs";
@@ -113,10 +113,9 @@ export default function AdminPage() {
   };
 
   const onApprove = (a: CompanyAccount) => run(a.uid, () => adminApprove(a.uid), `${a.company} 계정을 승인했습니다.`);
-  const onToggleBlock = (a: CompanyAccount) => {
-    const blocking = a.status !== "blocked";
-    if (blocking && !confirm(`${a.company} 계정을 차단할까요? 차단 시 로그인·제출이 막힙니다.`)) return;
-    run(a.uid, () => adminSetBlocked(a.uid, blocking), blocking ? "차단했습니다." : "차단을 해제했습니다.");
+  const onDelete = (a: CompanyAccount) => {
+    if (!confirm(`${a.company || a.email} 계정을 완전히 삭제할까요?\n로그인 계정과 프로필이 영구 삭제됩니다. (작성한 허가서 문서는 보존)`)) return;
+    run(a.uid, () => adminDeleteAccount(a.uid), "계정을 삭제했습니다.");
   };
   const onSetPassword = (a: CompanyAccount) => {
     const pw = window.prompt(`${a.company} 계정의 새 비밀번호 (6자 이상):`);
@@ -240,6 +239,7 @@ export default function AdminPage() {
                     <div className="acct-actions">
                       <button className="mini btn-approve" disabled={busyUid === a.uid || !a.emailVerified} title={a.emailVerified ? "" : "이메일 인증 후 승인 가능"} onClick={() => onApprove(a)}>승인</button>
                       <button className="mini" disabled={busyUid === a.uid} onClick={() => onResetEmail(a)}>재설정 메일</button>
+                      <button className="mini btn-reject" disabled={busyUid === a.uid} onClick={() => onDelete(a)}>삭제</button>
                     </div>
                   </div>
                 ))}
@@ -259,16 +259,14 @@ export default function AdminPage() {
                   <div className="acct-info">
                     <span className="lead">{a.company || "(업체명 없음)"}</span>
                     <span className="meta">{a.email}</span>
-                    <span className={`chip chip-${a.status === "blocked" ? "rejected" : "approved"}`}>{a.status === "blocked" ? "차단됨" : "활성"}</span>
+                    {a.role === "admin" && <span className="chip chip-approved">시스템관리자</span>}
                     {!a.emailVerified && <span className="chip chip-submitted">이메일 미인증</span>}
                     <RoleSelect a={a} />
                   </div>
                   <div className="acct-actions">
                     <button className="mini" disabled={busyUid === a.uid} onClick={() => onSetPassword(a)}>비번 변경</button>
                     <button className="mini" disabled={busyUid === a.uid} onClick={() => onResetEmail(a)}>재설정 메일</button>
-                    <button className={`mini ${a.status === "blocked" ? "btn-approve" : "btn-reject"}`} disabled={busyUid === a.uid} onClick={() => onToggleBlock(a)}>
-                      {a.status === "blocked" ? "차단 해제" : "차단"}
-                    </button>
+                    <button className="mini btn-reject" disabled={busyUid === a.uid} onClick={() => onDelete(a)}>삭제</button>
                   </div>
                 </div>
               ))}

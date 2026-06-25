@@ -93,17 +93,20 @@ exports.adminApprove = onCall(async (request) => {
   return {ok: true};
 });
 
-// 계정 차단/해제: Auth disabled 토글 + Firestore status 반영
-exports.adminSetBlocked = onCall(async (request) => {
-  await assertAdmin(request);
+// 계정 완전 삭제: Auth 사용자 + users 문서 제거. 본인 계정은 삭제 불가.
+exports.adminDeleteAccount = onCall(async (request) => {
+  const callerUid = await assertAdmin(request);
   const uid = requireUid(request.data);
-  const blocked = !!(request.data && request.data.blocked);
-  await auth().updateUser(uid, {disabled: blocked});
-  await db().collection("users").doc(uid).set(
-      {status: blocked ? "blocked" : "active"},
-      {merge: true},
-  );
-  return {ok: true, blocked};
+  if (uid === callerUid) {
+    throw new HttpsError("failed-precondition", "본인 계정은 삭제할 수 없습니다.");
+  }
+  try {
+    await db().collection("users").doc(uid).delete();
+  } catch (e) {/* 문서 없음 무시 */}
+  try {
+    await auth().deleteUser(uid);
+  } catch (e) {/* Auth 사용자 없음 무시 */}
+  return {ok: true};
 });
 
 // 비밀번호 직접 지정(관리자 초기화)
