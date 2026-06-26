@@ -192,6 +192,7 @@ function FillInner() {
     if (!data.manager) miss.push("담당자(의뢰자)");
     if (!data.workDate) miss.push("작업일자");
     if (!data.workContent.trim()) miss.push("작업내용");
+    if (data.workTypes.length === 0) miss.push("작업형태(1개 이상 선택)");
     if (data.privacyConsent !== "agree") miss.push("개인정보 수집·이용 동의(동의 함)");
     return miss;
   };
@@ -206,7 +207,13 @@ function FillInner() {
     let id = permitId;
     if (!id) id = await handleSave();
     if (!id) return;
-    if (!window.confirm("작업허가서를 제출하시겠습니까? 제출 후에는 수정이 불가합니다.")) return;
+    const warns: string[] = [];
+    if (data.jsa.filter((r) => r.step.trim() || r.hazard.trim()).length === 0) warns.push("위험성평가(JSA)가 작성되지 않았습니다");
+    if (data.eduSigners.filter((s) => s.name.trim()).length === 0) warns.push("교육서약 참여자 서명이 없습니다");
+    const confirmMsg = warns.length
+      ? "⚠️ 다음 항목이 비어 있습니다:\n\n· " + warns.join("\n· ") + "\n\n그래도 작업허가서를 제출하시겠습니까? (제출 후 수정 불가)"
+      : "작업허가서를 제출하시겠습니까? 제출 후에는 수정이 불가합니다.";
+    if (!window.confirm(confirmMsg)) return;
     setSaving(true);
     try {
       await submitPermit(id);

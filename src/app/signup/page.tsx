@@ -59,7 +59,7 @@ export default function SignupPage() {
               <b>{email}</b> 로 인증 메일을 보냈습니다.<br />
               메일의 링크로 인증을 마치면 <b>관리자 승인</b> 후 이용할 수 있어요.
             </p>
-            <button className="mini btn-accent" style={{ marginTop: 14, width: "100%" }} onClick={() => router.replace("/my")}>로그인 화면으로 이동</button>
+            <button className="mini btn-accent" style={{ marginTop: 14, width: "100%" }} onClick={() => router.replace("/my")}>확인</button>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
