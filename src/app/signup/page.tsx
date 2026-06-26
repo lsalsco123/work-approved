@@ -11,8 +11,11 @@ const ERR_MAP: Record<string, string> = {
   "auth/too-many-requests": "요청이 너무 많습니다. 잠시 후 다시 시도하세요.",
 };
 
+const ALSCO_COMPANY = "LS알스코";
+
 export default function SignupPage() {
   const router = useRouter();
+  const [isAlsco, setIsAlsco] = useState(false);
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
@@ -25,9 +28,10 @@ export default function SignupPage() {
     e.preventDefault();
     setError("");
     if (pw !== pw2) { setError("비밀번호가 일치하지 않습니다."); return; }
+    const companyName = isAlsco ? ALSCO_COMPANY : company;
     setSubmitting(true);
     try {
-      await signUpCompany(email, company, pw);
+      await signUpCompany(email, companyName, pw);
       setDone(true);
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code ?? "";
@@ -43,7 +47,7 @@ export default function SignupPage() {
       <div className="panel" style={{ maxWidth: 420, width: "100%" }}>
         <div style={{ textAlign: "center", marginBottom: 22 }}>
           <img src="/ls_alsco_logo_color.png" alt="LS Alsco" style={{ height: 34, marginBottom: 10 }} />
-          <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700 }}>업체 회원가입</h2>
+          <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700 }}>회원가입</h2>
           <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>작업허가서 발급 시스템</p>
         </div>
 
@@ -60,9 +64,29 @@ export default function SignupPage() {
         ) : (
           <form onSubmit={handleSubmit}>
             <div className="field">
-              <label>업체명</label>
-              <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="예) 신우기전" required />
+              <label>가입 유형</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 0", border: `1.5px solid ${!isAlsco ? "#003377" : "#cbd5e1"}`, borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600, color: !isAlsco ? "#003377" : "#64748b", background: !isAlsco ? "#eef4ff" : "#fff" }}>
+                  <input type="radio" name="kind" checked={!isAlsco} onChange={() => setIsAlsco(false)} style={{ accentColor: "#003377" }} />
+                  업체
+                </label>
+                <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 0", border: `1.5px solid ${isAlsco ? "#003377" : "#cbd5e1"}`, borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600, color: isAlsco ? "#003377" : "#64748b", background: isAlsco ? "#eef4ff" : "#fff" }}>
+                  <input type="radio" name="kind" checked={isAlsco} onChange={() => setIsAlsco(true)} style={{ accentColor: "#003377" }} />
+                  알스코 인원
+                </label>
+              </div>
             </div>
+            {isAlsco ? (
+              <div className="field">
+                <label>소속</label>
+                <input value={ALSCO_COMPANY} disabled style={{ background: "#f1f5f9", color: "#475569" }} />
+              </div>
+            ) : (
+              <div className="field">
+                <label>업체명</label>
+                <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="예) 신우기전" required />
+              </div>
+            )}
             <div className="field">
               <label>이메일 (로그인 아이디)</label>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="company@example.com" required autoComplete="username" />
