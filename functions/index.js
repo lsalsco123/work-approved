@@ -136,9 +136,15 @@ exports.chainAction = onCall(async (request) => {
   const action = String(d.action || "");
   const comment = String(d.comment || "").trim();
   const reviewerName = String(d.reviewerName || "").trim();
+  const signature = String(d.signature || "");
   if (!permitId) throw new HttpsError("invalid-argument", "permitId 가 필요합니다.");
   if (!["approve", "reject", "resubmit"].includes(action)) {
     throw new HttpsError("invalid-argument", "action 이 올바르지 않습니다.");
+  }
+  if (action === "approve" &&
+      (!signature.startsWith("data:image/png;base64,") ||
+       signature.length > 100000)) {
+    throw new HttpsError("invalid-argument", "유효한 서명을 입력하세요.");
   }
 
   // 호출자 역할은 트랜잭션 중 불변이므로 밖에서 1회 조회
@@ -146,7 +152,8 @@ exports.chainAction = onCall(async (request) => {
   const u = usnap.exists ? usnap.data() : {};
   const role = u.role || "guest";
   const isSys = role === "admin";
-  const callerName = u.managerName || (isSys ? "시스템관리자" : "");
+  const callerName = u.managerName || u.name ||
+    (isSys ? "시스템관리자" : "");
   const pref = db().collection("permits").doc(permitId);
 
   // 동시 결재 경쟁 방지: permit 읽기·검증·쓰기를 트랜잭션으로 원자 처리
@@ -166,6 +173,8 @@ exports.chainAction = onCall(async (request) => {
       return false; // safety 단계는 시스템관리자 전담
     };
     const now = new Date().toISOString();
+    const today = new Date(Date.now() + 9 * 60 * 60 * 1000)
+        .toISOString().slice(0, 10);
 
     // 재상신: 반려건을 담당자/관리자가 다시 결재 라인에 올림
     if (action === "resubmit") {
@@ -207,16 +216,23 @@ exports.chainAction = onCall(async (request) => {
     upd[`chain.${stage}`] = {by: callerName, comment, at: now};
     if (stage === "manager") {
       upd["data.admin.issue.name"] = reqMgr;
+      upd["data.admin.issue.date"] = today;
+      upd["data.admin.issue.sign"] = signature;
       upd.stage = "safety";
     } else if (stage === "safety") {
       upd["data.admin.review.name"] = reviewerName || "박세현";
       upd["data.admin.review.dept"] = "환경안전";
+      upd["data.admin.review.date"] = today;
+      upd["data.admin.review.sign"] = signature;
       upd.stage = "factory";
     } else if (stage === "factory") {
-      upd["data.admin.approve.name"] = "이태훈";
+      const approverName = callerName || "이태훈";
+      upd["data.admin.approve.name"] = approverName;
       upd["data.admin.approve.dept"] = "공장장";
+      upd["data.admin.approve.date"] = today;
+      upd["data.admin.approve.sign"] = signature;
       upd.status = "approved";
-      upd.approvedBy = "이태훈";
+      upd.approvedBy = approverName;
       upd.approvedAt = now;
       upd.stage = "done";
     }

@@ -12,6 +12,7 @@ import {
 } from "@/lib/form";
 import SignaturePad from "@/components/SignaturePad";
 import { sampleGeneral } from "@/lib/samples";
+import { emptyPermit } from "@/lib/types";
 import { MANAGERS, SAFETY_REVIEWERS } from "@/lib/managers";
 import { savePermit, submitPermit, getPermit, saveAdminFields, completePermit, chainAction, PermitStatus, ChainStage, PermitChain } from "@/lib/permits";
 import {
@@ -29,6 +30,19 @@ const STATUS_LABEL: Record<PermitStatus, { text: string; color: string }> = {
   completed: { text: "완료",     color: "#64748b" },
 };
 
+type SignatureTarget =
+  | { kind: "education"; index: number }
+  | { kind: "applicant" }
+  | { kind: "approval" }
+  | null;
+
+function todayYmd(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 function FillInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -38,7 +52,8 @@ function FillInner() {
   const templateId = searchParams.get("template");
   const isNewTemplate = searchParams.get("templateNew") === "1";
   const templateMode = !!templateId || isNewTemplate;
-  const { data, setData, update, toggleIn, reset, loaded } = usePermit({ disableLocalStorage: !!cloudId || templateMode });
+  // 새 허가서는 항상 빈 양식으로 시작한다. 임시저장은 Firestore 문서로만 관리한다.
+  const { data, setData, update, toggleIn, loaded } = usePermit({ disableLocalStorage: true });
 
   const [showPreview, setShowPreview] = useState(true);
   const [permitId, setPermitId] = useState<string | null>(cloudId);
@@ -55,8 +70,7 @@ function FillInner() {
   const [templateName, setTemplateName] = useState("");
   const [templateWorkType, setTemplateWorkType] = useState("");
   const [templateOrder, setTemplateOrder] = useState(999);
-  // 서명 팝업 대상 참여자 인덱스 (null=닫힘)
-  const [signingIndex, setSigningIndex] = useState<number | null>(null);
+  const [signatureTarget, setSignatureTarget] = useState<SignatureTarget>(null);
   // 클라우드 허가서 로드 결과: null=정상, "notfound"=문서 없음/권한 없음, "error"=조회 실패
   const [loadError, setLoadError] = useState<null | "notfound" | "error">(null);
 
@@ -128,12 +142,12 @@ function FillInner() {
     if (!authLoading && !user) router.replace("/login");
   }, [authLoading, user, router]);
 
-  // 게스트 새 작성: 업체명이 비어 있으면 계정에 등록된 업체명으로 자동 채움
+  // 업체 계정의 허가서는 신규/임시저장 모두 계정에 등록된 업체명을 기준으로 한다.
   useEffect(() => {
-    if (!loaded || !user || user.role !== "guest") return;
-    if (cloudId || templateMode || !user.company) return;
-    setData((d) => (d.company ? d : { ...d, company: user.company }));
-  }, [loaded, user, cloudId, templateMode]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!loaded || !cloudLoaded || !user || user.role !== "guest") return;
+    if (templateMode || !user.company) return;
+    setData((d) => (d.company === user.company ? d : { ...d, company: user.company }));
+  }, [loaded, cloudLoaded, user, templateMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 인증 확인 중이거나 미로그인(리다이렉트 대기) 상태에서는 내부 UI를 렌더하지 않음
   if (authLoading || !user) return <div className="loading"><span className="spinner" />불러오는 중…</div>;
@@ -194,6 +208,8 @@ function FillInner() {
     if (!data.workContent.trim()) miss.push("작업내용");
     if (data.workTypes.length === 0) miss.push("작업형태(1개 이상 선택)");
     if (data.privacyConsent !== "agree") miss.push("개인정보 수집·이용 동의(동의 함)");
+    if (!data.applicantName.trim()) miss.push("신청(업체) 성명");
+    if (!data.applicantSign) miss.push("신청(업체) 서명");
     return miss;
   };
 
@@ -204,9 +220,6 @@ function FillInner() {
       alert("다음 필수 항목을 확인해주세요:\n\n· " + missing.join("\n· "));
       return;
     }
-    let id = permitId;
-    if (!id) id = await handleSave();
-    if (!id) return;
     const warns: string[] = [];
     if (data.jsa.filter((r) => r.step.trim() || r.hazard.trim()).length === 0) warns.push("위험성평가(JSA)가 작성되지 않았습니다");
     if (data.eduSigners.filter((s) => s.name.trim()).length === 0) warns.push("교육서약 참여자 서명이 없습니다");
@@ -216,6 +229,23 @@ function FillInner() {
     if (!window.confirm(confirmMsg)) return;
     setSaving(true);
     try {
+      // 기존 임시저장 문서도 제출 직전에 현재 폼 전체를 다시 저장해야
+      // 마지막으로 선택한 담당자와 수정 내용이 결재 문서에 반영된다.
+      const submissionData = {
+        ...data,
+        company: user.company || data.company,
+        applicantDate: data.applicantDate || todayYmd(),
+      };
+      const id = await savePermit(
+        user.uid,
+        user.email,
+        user.company || submissionData.company,
+        submissionData,
+        permitId ?? undefined,
+      );
+      setData(submissionData);
+      setPermitId(id);
+      window.history.replaceState({}, "", `/fill?id=${id}`);
       await submitPermit(id);
       setPermitStatus("submitted");
       let notifyOk = true;
@@ -258,6 +288,7 @@ function FillInner() {
       } else {
         alert("제출은 완료되었습니다. ✅\n다만 관리자 알림 메일 발송에 실패했으니 담당자에게 직접 알려주세요.");
       }
+      router.replace("/my");
     } catch (e) {
       alert("제출 실패: " + e);
     } finally {
@@ -292,7 +323,16 @@ function FillInner() {
     const t = templates.find((x) => x.id === id);
     if (!t) return;
     if (window.confirm(`"${t.name}" 예시를 불러올까요? 현재 입력 내용을 덮어씁니다.`)) {
-      setData(t.data);
+      const blank = emptyPermit();
+      setData({
+        ...blank,
+        ...t.data,
+        company: user?.company || data.company,
+        applicantDate: "",
+        applicantSign: "",
+        eduSigners: (t.data.eduSigners || []).map((signer) => ({ ...signer, sign: "" })),
+        admin: blank.admin,
+      });
     }
   };
 
@@ -334,7 +374,7 @@ function FillInner() {
       });
     } catch (e) { console.error("notify 실패:", e); }
   };
-  const doApprove = async () => {
+  const doApprove = async (signature: string) => {
     if (!permitId) return;
     // 환경안전(safety) 단계는 검토자명 필요(기본 박세현)
     let reviewerName = "";
@@ -346,7 +386,7 @@ function FillInner() {
     const prevStage = permitStage || "manager";
     setSaving(true);
     try {
-      const r = await chainAction(permitId, "approve", comment.trim(), reviewerName);
+      const r = await chainAction(permitId, "approve", comment.trim(), reviewerName, signature);
       const kind = prevStage === "manager" ? "to_safety" : prevStage === "safety" ? "to_factory" : "final";
       await postNotify(kind);
       alert(r.status === "approved" ? "최종 승인되었습니다." : "승인하여 다음 단계로 넘겼습니다.");
@@ -401,6 +441,31 @@ function FillInner() {
     setData((d) => ({ ...d, eduSigners: d.eduSigners.filter((_, j) => j !== i) }));
   const setReviewer = (name: string) =>
     setData((d) => ({ ...d, admin: { ...d.admin, review: { ...d.admin.review, name, dept: "환경안전" } } }));
+
+  const signatureTitle = signatureTarget?.kind === "education"
+    ? `${data.eduSigners[signatureTarget.index]?.name || `${signatureTarget.index + 1}번`} 참여자 서명`
+    : signatureTarget?.kind === "applicant"
+      ? `${data.applicantName || "신청자"} 업체 신청 서명`
+      : `${permitStage === "factory" ? "공장장 최종" : permitStage === "safety" ? "환경안전" : "담당자 1차"} 승인 서명`;
+  const signatureInitial = signatureTarget?.kind === "education"
+    ? data.eduSigners[signatureTarget.index]?.sign
+    : signatureTarget?.kind === "applicant" ? data.applicantSign : undefined;
+  const saveSignature = (signature: string) => {
+    const target = signatureTarget;
+    if (!target) return;
+    setSignatureTarget(null);
+    if (target.kind === "education") {
+      setSignerSign(target.index, signature);
+    } else if (target.kind === "applicant") {
+      setData((d) => ({
+        ...d,
+        applicantSign: signature,
+        applicantDate: todayYmd(),
+      }));
+    } else {
+      void doApprove(signature);
+    }
+  };
 
   const statusInfo = permitStatus ? STATUS_LABEL[permitStatus] : null;
 
@@ -551,7 +616,7 @@ function FillInner() {
                     canActNow ? (
                       <>
                         <button className="mini btn-reject" onClick={doReject} disabled={saving}>반려</button>
-                        <button className="mini btn-approve" onClick={doApprove} disabled={saving}>
+                        <button className="mini btn-approve" onClick={() => setSignatureTarget({ kind: "approval" })} disabled={saving}>
                           {saving ? "처리 중…" : (stageNow === "factory" ? "최종 승인" : "승인")}
                         </button>
                       </>
@@ -589,12 +654,16 @@ function FillInner() {
                   <button className="mini" onClick={() => setData(sampleGeneral())}>예시 채우기</button>
                 )
               )}
-              <button className="mini danger" onClick={() => { if (window.confirm("모든 입력을 초기화할까요?")) reset(); }}>초기화</button>
+              <button className="mini danger" onClick={() => {
+                if (window.confirm("모든 입력을 초기화할까요?")) {
+                  setData({ ...emptyPermit(), company: user.company || "" });
+                }
+              }}>초기화</button>
             </div>
           )}
 
           <Section title="① 기본 정보">
-            <Row label="업체명(부서명)" required><Text value={data.company} onChange={(v) => update("company", v)} readOnly={isReadOnly} /></Row>
+            <Row label="업체명(부서명)" required><Text value={data.company} onChange={(v) => update("company", v)} readOnly={isReadOnly || isGuest} /></Row>
             <Row label="대표자"><Text value={data.representative} onChange={(v) => update("representative", v)} readOnly={isReadOnly} /></Row>
             <Row label="작업감독자" required><Text value={data.supervisor} onChange={(v) => update("supervisor", v)} readOnly={isReadOnly} /></Row>
             <Row label="담당자(의뢰자)" required hint="공사를 의뢰한 사내 담당자 · 뒷장 발급자로 표기됨">
@@ -769,7 +838,7 @@ function FillInner() {
                     : <span style={{ fontSize: 12, color: "#94a3b8", width: 90, textAlign: "center" }}>미서명</span>}
                   {!isReadOnly && (
                     <>
-                      <button className="mini" onClick={() => setSigningIndex(i)}>{s.sign ? "서명 수정" : "서명"}</button>
+                      <button className="mini" onClick={() => setSignatureTarget({ kind: "education", index: i })}>{s.sign ? "서명 수정" : "서명"}</button>
                       <button className="mini danger" onClick={() => removeSigner(i)}>삭제</button>
                     </>
                   )}
@@ -793,7 +862,19 @@ function FillInner() {
               <Row label="소속"><Text value={data.applicantDept} onChange={(v) => update("applicantDept", v)} readOnly={isReadOnly} /></Row>
               <Row label="성명"><Text value={data.applicantName} onChange={(v) => update("applicantName", v)} readOnly={isReadOnly} /></Row>
             </div>
-            <Row label="신청일자"><Text value={data.applicantDate} onChange={(v) => update("applicantDate", v)} type="date" readOnly={isReadOnly} /></Row>
+            <Row label="신청일자" hint="서명 저장 시 오늘 날짜가 자동 입력됩니다."><Text value={data.applicantDate} onChange={() => {}} type="date" readOnly /></Row>
+            <Row label="신청자 서명" required>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {data.applicantSign
+                  ? <img src={data.applicantSign} alt="신청자 서명" style={{ height: 40, width: 120, objectFit: "contain", border: "1px solid #e2e8f0", borderRadius: 4, background: "#fff" }} />
+                  : <span style={{ fontSize: 12, color: "#94a3b8" }}>미서명</span>}
+                {!isReadOnly && (
+                  <button className="mini" onClick={() => setSignatureTarget({ kind: "applicant" })}>
+                    {data.applicantSign ? "서명 수정" : "서명"}
+                  </button>
+                )}
+              </div>
+            </Row>
           </Section>
         </div>
 
@@ -804,12 +885,12 @@ function FillInner() {
         )}
       </div>
 
-      {signingIndex !== null && (
+      {signatureTarget && (
         <SignaturePad
-          title={`${data.eduSigners[signingIndex]?.name || `${signingIndex + 1}번`} 참여자 서명`}
-          initial={data.eduSigners[signingIndex]?.sign}
-          onSave={(d) => { setSignerSign(signingIndex, d); setSigningIndex(null); }}
-          onClose={() => setSigningIndex(null)}
+          title={signatureTitle}
+          initial={signatureInitial}
+          onSave={saveSignature}
+          onClose={() => setSignatureTarget(null)}
         />
       )}
     </div>

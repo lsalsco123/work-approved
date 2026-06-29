@@ -13,7 +13,7 @@ export interface SignSlot {
   name: string;
   dept?: string;
   date?: string; // YYYY-MM-DD
-  sign?: string; // 직접 서명 이미지 (dataURL) — eduSigners 용
+  sign?: string; // 직접 서명 이미지 (PNG dataURL)
 }
 
 export interface PermitData {
@@ -90,6 +90,7 @@ export interface PermitData {
   applicantDept: string;  // T167 소속
   applicantName: string;  // X167 성명
   applicantDate: string;  // AB167 날짜
+  applicantSign: string;  // X167 신청자 직접 서명 이미지
 
   // ⑰ 작업승인 (관리자 전용)
   admin: {
@@ -117,7 +118,7 @@ export function emptyPermit(): PermitData {
     jsa: [],
     eduSigners: [], representativeSignName: "", representativeSignDate: "",
     privacyConsent: "",
-    applicantDept: "", applicantName: "", applicantDate: "",
+    applicantDept: "", applicantName: "", applicantDate: "", applicantSign: "",
     admin: {
       issue: { name: "", dept: "생산/설비관리팀", date: "" },
       review: { name: "", dept: "환경안전", date: "" },

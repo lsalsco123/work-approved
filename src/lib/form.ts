@@ -59,6 +59,12 @@ function imgFit(b: Box, src: string): ImageItem {
   return { kind: "image", page: b.page, x: b.x + b.w * 0.04, y: b.y + b.h * 0.08, w: b.w * 0.92, h: b.h * 0.84, src };
 }
 
+// 성명 셀 안의 인쇄된 "(인)" 앞에 직접 서명을 배치한다.
+function signatureVal(ref: string, src: string): ImageItem {
+  const b = cell(ref);
+  return imgFit({ ...b, x: b.x + b.w * 0.42, w: b.w * 0.34 }, src);
+}
+
 const DEF_FONT = 7.5; // pt at print scale
 
 function txt(ref: string, text: string, opts: Partial<TextItem> = {}): TextItem {
@@ -339,9 +345,22 @@ export function buildOverlays(data: PermitData): Overlay[] {
   const EDU_ROWS = [138, 140, 142, 144, 146, 148];
   data.eduSigners.slice(0, 18).forEach((s, i) => {
     const col = i % 3, rw = EDU_ROWS[Math.floor(i / 3)];
-    if (s.name) push(txt(`${EDU_COLS[col]}${rw}`, s.name, { align: "center", valign: "middle", fontPt: 6.5 }));
-    // 서명은 인쇄된 "(인)"(셀 우측)과 겹치지 않게 셀 좌측 ~60% 영역에만 배치
-    if (s.sign) { const sc = cell(`${EDU_SIGN_COLS[col]}${rw}`); out.push(imgFit({ ...sc, w: sc.w * 0.6 }, s.sign)); }
+    if (s.name) {
+      const nc = cell(`${EDU_COLS[col]}${rw}`);
+      push(boxText({ ...nc, y: nc.y + nc.h * 0.03, h: nc.h * 0.94 }, s.name,
+        { align: "center", valign: "middle", fontPt: 6.5, wrap: false }));
+    }
+    // 병합된 실제 서명 칸의 좌측 70%를 사용해 인쇄된 "(인)"과 겹치지 않게 정렬한다.
+    if (s.sign) {
+      const sc = cell(`${EDU_SIGN_COLS[col]}${rw}`);
+      out.push(imgFit({
+        ...sc,
+        x: sc.x + sc.w * 0.03,
+        y: sc.y + sc.h * 0.03,
+        w: sc.w * 0.70,
+        h: sc.h * 0.94,
+      }, s.sign));
+    }
   });
   if (data.representativeSignName) push(nameVal("S150", data.representativeSignName));
   if (data.representativeSignDate) push(txt("X150", fmtKDate(data.representativeSignDate), { fontPt: 7 }));
@@ -353,6 +372,7 @@ export function buildOverlays(data: PermitData): Overlay[] {
   // 신청 (업체) — 인쇄된 "소속 :"/"성명 :" 뒤에 값만 기입
   if (data.applicantDept) push(deptVal("T167", data.applicantDept));
   if (data.applicantName) push(nameVal("X167", data.applicantName));
+  if (data.applicantSign) out.push(signatureVal("X167", data.applicantSign));
   if (data.applicantDate) {
     const abd = cell("AB167");
     push(txt("AB167", fmtKDate(data.applicantDate), { x: abd.x - abd.w * 0.18, w: abd.w * 1.18, fontPt: 7 }));
@@ -366,12 +386,13 @@ export function buildOverlays(data: PermitData): Overlay[] {
     if (k === "issue" && data.manager) { dept = managerDept(data.manager) || dept; name = data.manager; }
     // 검토 = 소속 항상 "환경안전" (성명은 환경안전팀에서 선택)
     if (k === "review") { dept = "환경안전"; }
-    // 승인 = 항상 공장장 이태훈
-    if (k === "approve") { dept = "공장장"; name = "이태훈"; }
+    // 승인 = 결재를 실제 처리한 공장장 계정의 이름을 사용
+    if (k === "approve") { dept = "공장장"; }
     // 작업완료확인 = 담당자(발급자)와 동일
     if (k === "complete" && data.manager) { dept = managerDept(data.manager) || dept; name = data.manager; }
     if (dept) push(deptVal(`T${rw}`, dept));
     if (name) push(nameVal(`X${rw}`, name));
+    if (s.sign) out.push(signatureVal(`X${rw}`, s.sign));
     // 날짜: fmtKDate 폭(~0.121)이 AB셀(0.116)보다 넓고 셀 끝이 페이지 우측 끝 → 박스를 좌측으로 넓혀 셀 안에 맞춤 (신청 AB167과 동일 처리)
     if (s.date) { const ab = cell(`AB${rw}`); push(txt(`AB${rw}`, fmtKDate(s.date), { x: ab.x - ab.w * 0.18, w: ab.w * 1.18, fontPt: 7 })); }
   });

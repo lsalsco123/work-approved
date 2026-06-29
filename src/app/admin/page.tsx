@@ -93,6 +93,11 @@ export default function AdminPage() {
   const [acctLoading, setAcctLoading] = useState(true);
   const [acctError, setAcctError] = useState("");
   const [busyUid, setBusyUid] = useState<string>("");
+  const [acctSearch, setAcctSearch] = useState("");
+  const [acctStatusFilter, setAcctStatusFilter] = useState("all");
+  const [acctRoleFilter, setAcctRoleFilter] = useState("all");
+  const [acctPage, setAcctPage] = useState(0);
+  const ACCT_PAGE_SIZE = 10;
 
   const fetchAccounts = async () => {
     setAcctLoading(true); setAcctError("");
@@ -113,7 +118,9 @@ export default function AdminPage() {
     finally { setBusyUid(""); }
   };
 
-  const onApprove = (a: CompanyAccount) => run(a.uid, () => adminApprove(a.uid), `${a.company} 계정을 승인했습니다.`);
+  useEffect(() => { setAcctPage(0); }, [acctSearch, acctStatusFilter, acctRoleFilter]);
+
+  const onApprove = (a: CompanyAccount) => run(a.uid, () => adminApprove(a.uid), `${a.company}${a.name ? ` ${a.name}` : ""} 계정을 승인했습니다.`);
   const onDelete = (a: CompanyAccount) => {
     if (!confirm(`${a.company || a.email} 계정을 완전히 삭제할까요?\n로그인 계정과 프로필이 영구 삭제됩니다. (작성한 허가서 문서는 보존)`)) return;
     run(a.uid, () => adminDeleteAccount(a.uid), "계정을 삭제했습니다.");
@@ -210,6 +217,18 @@ export default function AdminPage() {
     a.status === "pending" ? "승인대기" : a.status === "blocked" ? "차단" : "활성";
 
   const acctRows = [...pending, ...others];
+  const filteredAccts = acctRows.filter((a) => {
+    if (acctSearch) {
+      const q = acctSearch.toLowerCase();
+      if (!a.company.toLowerCase().includes(q) && !(a.name || "").toLowerCase().includes(q)) return false;
+    }
+    if (acctStatusFilter !== "all" && a.status !== acctStatusFilter) return false;
+    if (acctRoleFilter !== "all" && a.role !== acctRoleFilter) return false;
+    return true;
+  });
+  const acctPageCount = Math.max(1, Math.ceil(filteredAccts.length / ACCT_PAGE_SIZE));
+  const acctPageRows = filteredAccts.slice(acctPage * ACCT_PAGE_SIZE, (acctPage + 1) * ACCT_PAGE_SIZE);
+
   const acctCols: SheetColumn<CompanyAccount>[] = [
     { key: "company", header: "업체명/소속", width: 130, copyText: (a) => a.company || "(없음)" },
     { key: "name", header: "이름", width: 90, copyText: (a) => a.name || "-" },
@@ -295,7 +314,7 @@ export default function AdminPage() {
         {/* 업체(외주) 계정 관리 — 업체 셀프 회원가입 / 관리자 승인·차단·비번관리 */}
         <div className="panel">
           <div className="panel-head">
-            <span className="panel-title" style={{ color: "#0369a1" }}>업체 계정 관리</span>
+            <span className="panel-title" style={{ color: "#0369a1" }}>계정 관리</span>
             <span className="panel-sub">업체/관리자 모두 회원가입 후, 여기서 역할(업체·관리자) 분류 및 승인·차단·비밀번호를 관리합니다.</span>
             <div className="grow" />
             <button className="mini" onClick={fetchAccounts} disabled={acctLoading}>↻ 새로고침</button>
@@ -304,57 +323,87 @@ export default function AdminPage() {
           {acctError && <p className="note note-error" style={{ marginBottom: 10 }}><span className="ico">⚠</span>{acctError}</p>}
 
           {pending.length > 0 && <p className="sheet-hint">승인 대기 {pending.length}건 — 이메일 인증이 완료된 계정만 “승인”할 수 있습니다. (셀을 드래그해 선택 후 Ctrl/⌘+C로 복사)</p>}
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <input className="inp" style={{ width: 170 }} placeholder="업체/이름 검색"
+              value={acctSearch} onChange={(e) => setAcctSearch(e.target.value)} />
+            <select className="inp" style={{ width: 110 }} value={acctStatusFilter} onChange={(e) => setAcctStatusFilter(e.target.value)}>
+              <option value="all">상태 전체</option>
+              <option value="pending">승인대기</option>
+              <option value="active">활성</option>
+              <option value="blocked">차단</option>
+            </select>
+            <select className="inp" style={{ width: 130 }} value={acctRoleFilter} onChange={(e) => setAcctRoleFilter(e.target.value)}>
+              <option value="all">역할 전체</option>
+              <option value="guest">업체</option>
+              <option value="manager">관리자</option>
+              <option value="admin">시스템관리자</option>
+            </select>
+            <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>{filteredAccts.length}건</span>
+          </div>
+
           {acctLoading ? (
             <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>불러오는 중…</p>
           ) : (
             <SheetTable
               columns={acctCols}
-              rows={acctRows}
+              rows={acctPageRows}
               rowKey={(a) => a.uid}
-              emptyText="아직 가입한 계정이 없습니다. 사용자가 로그인 화면의 “회원가입”으로 가입합니다."
+              emptyText="해당하는 계정이 없습니다."
             />
           )}
+          {acctPageCount > 1 && (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 10 }}>
+              <button className="mini" disabled={acctPage === 0} onClick={() => setAcctPage(0)}>«</button>
+              <button className="mini" disabled={acctPage === 0} onClick={() => setAcctPage((p) => p - 1)}>‹</button>
+              <span style={{ fontSize: 13, color: "#475569", minWidth: 80, textAlign: "center" }}>{acctPage + 1} / {acctPageCount} 페이지</span>
+              <button className="mini" disabled={acctPage >= acctPageCount - 1} onClick={() => setAcctPage((p) => p + 1)}>›</button>
+              <button className="mini" disabled={acctPage >= acctPageCount - 1} onClick={() => setAcctPage(acctPageCount - 1)}>»</button>
+            </div>
+          )}
         </div>
 
-        <div className="panel">
-          <div className="panel-head">
-            <span className="panel-title" style={{ color: "#6d28d9" }}>예시 양식 관리</span>
-            <span className="panel-sub">외주업체가 작성 화면에서 불러오는 예시입니다.</span>
-            <div className="grow" />
-            <button className="mini" onClick={() => router.push("/fill?templateNew=1")}>+ 새 예시 양식</button>
-            {templates.length === 0 && (
-              <button className="mini" disabled={tplBusy} onClick={seedDefaults}>{tplBusy ? "생성 중…" : "기본 예시 생성"}</button>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 16, marginBottom: 16, alignItems: "start" }}>
+          <div className="panel" style={{ marginBottom: 0 }}>
+            <div className="panel-head">
+              <span className="panel-title" style={{ color: "#6d28d9" }}>예시 양식 관리</span>
+              <span className="panel-sub">외주업체가 작성 화면에서 불러오는 예시입니다.</span>
+              <div className="grow" />
+              <button className="mini" onClick={() => router.push("/fill?templateNew=1")}>+ 새 예시 양식</button>
+              {templates.length === 0 && (
+                <button className="mini" disabled={tplBusy} onClick={seedDefaults}>{tplBusy ? "생성 중…" : "기본 예시 생성"}</button>
+              )}
+            </div>
+            <SheetTable
+              columns={tplCols}
+              rows={templates}
+              rowKey={(t) => t.id}
+              emptyText="아직 예시 양식이 없습니다. “기본 예시 생성”으로 작업형태별 기본 양식 7종을 만들 수 있어요."
+            />
+          </div>
+
+          <div className="panel" style={{ marginBottom: 0 }}>
+            <div className="panel-head">
+              <span className="panel-title" style={{ color: "#0d9488" }}>작업형태별 JSA 레퍼런스</span>
+              <span className="panel-sub">작업형태마다 미리 작성해두면 업체가 작성 화면에서 “레퍼런스 불러오기”로 채웁니다.</span>
+            </div>
+            <SheetTable columns={jsaCols} rows={jsaTypeRows} rowKey={(w) => w.v} />
+            {refWT ? (
+              <div style={{ marginTop: 12 }}>
+                <div className="form-row" style={{ alignItems: "center", marginBottom: 6 }}>
+                  <p style={{ margin: 0, fontSize: 13, color: "#334155" }}>
+                    <b>{refWTLabel(refWT)}</b> 레퍼런스 편집 — 단계/작업종류는 자유 입력입니다(관리자 작성용).
+                  </p>
+                  <div className="grow" />
+                  <button className="mini btn-accent" disabled={refBusy} onClick={saveRef}>{refBusy ? "처리 중…" : "저장"}</button>
+                  {refTypes.includes(refWT) && <button className="mini danger" disabled={refBusy} onClick={removeRef}>삭제</button>}
+                </div>
+                <JsaEditor rows={refRows} onChange={setRefRows} />
+              </div>
+            ) : (
+              <p className="sheet-hint" style={{ marginTop: 8 }}>위 표에서 작업형태의 “편집”을 누르면 해당 JSA 레퍼런스를 작성/수정할 수 있습니다.</p>
             )}
           </div>
-          <SheetTable
-            columns={tplCols}
-            rows={templates}
-            rowKey={(t) => t.id}
-            emptyText="아직 예시 양식이 없습니다. “기본 예시 생성”으로 작업형태별 기본 양식 7종을 만들 수 있어요."
-          />
-        </div>
-
-        <div className="panel">
-          <div className="panel-head">
-            <span className="panel-title" style={{ color: "#0d9488" }}>작업형태별 JSA 레퍼런스</span>
-            <span className="panel-sub">작업형태마다 미리 작성해두면 업체가 작성 화면에서 “레퍼런스 불러오기”로 채웁니다.</span>
-          </div>
-          <SheetTable columns={jsaCols} rows={jsaTypeRows} rowKey={(w) => w.v} />
-          {refWT ? (
-            <div style={{ marginTop: 12 }}>
-              <div className="form-row" style={{ alignItems: "center", marginBottom: 6 }}>
-                <p style={{ margin: 0, fontSize: 13, color: "#334155" }}>
-                  <b>{refWTLabel(refWT)}</b> 레퍼런스 편집 — 단계/작업종류는 자유 입력입니다(관리자 작성용).
-                </p>
-                <div className="grow" />
-                <button className="mini btn-accent" disabled={refBusy} onClick={saveRef}>{refBusy ? "처리 중…" : "저장"}</button>
-                {refTypes.includes(refWT) && <button className="mini danger" disabled={refBusy} onClick={removeRef}>삭제</button>}
-              </div>
-              <JsaEditor rows={refRows} onChange={setRefRows} />
-            </div>
-          ) : (
-            <p className="sheet-hint" style={{ marginTop: 8 }}>위 표에서 작업형태의 “편집”을 누르면 해당 JSA 레퍼런스를 작성/수정할 수 있습니다.</p>
-          )}
         </div>
 
         <div className="page-head">

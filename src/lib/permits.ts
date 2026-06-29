@@ -34,9 +34,13 @@ export interface PermitRecord {
 // 결재 액션(승인/반려/재상신) — 서버(chainAction)가 역할·단계 검증
 export async function chainAction(
   permitId: string, action: "approve" | "reject" | "resubmit", comment = "", reviewerName = "",
+  signature = "",
 ): Promise<{ stage?: ChainStage; status?: PermitStatus }> {
-  const fn = httpsCallable<unknown, { stage?: ChainStage; status?: PermitStatus }>(functions, "chainAction");
-  const res = await fn({ permitId, action, comment, reviewerName });
+  const fn = httpsCallable<
+    { permitId: string; action: string; comment: string; reviewerName: string; signature: string },
+    { stage?: ChainStage; status?: PermitStatus }
+  >(functions, "chainAction");
+  const res = await fn({ permitId, action, comment, reviewerName, signature });
   return res.data;
 }
 
