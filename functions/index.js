@@ -64,6 +64,7 @@ exports.adminListAccounts = onCall(async (request) => {
       uid: docSnap.id,
       email: authEmail,
       company: d.company || "",
+      name: d.name || "",
       status: d.status || "active", // legacy(상태 없음)는 active 취급
       role: d.role || "guest",
       managerKind: d.managerKind || "",

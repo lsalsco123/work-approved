@@ -13,6 +13,7 @@ import { listJsaRefs, getJsaRef, saveJsaRef, deleteJsaRef } from "@/lib/jsaRefs"
 import { WORK_TYPES } from "@/lib/form";
 import { JsaRow } from "@/lib/types";
 import JsaEditor from "@/components/JsaEditor";
+import SheetTable, { SheetColumn } from "@/components/SheetTable";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
   draft: "임시저장",
@@ -199,6 +200,85 @@ export default function AdminPage() {
     return true;
   });
 
+  // ── 엑셀형 표 컬럼 정의 ─────────────────────────────────────────────
+  const roleLabel = (a: CompanyAccount) =>
+    a.role === "admin" ? "시스템관리자"
+      : a.role !== "manager" ? "업체"
+        : a.managerKind === "factory" ? "관리자·공장장"
+          : `관리자·담당자(${a.managerName})`;
+  const acctStatusLabel = (a: CompanyAccount) =>
+    a.status === "pending" ? "승인대기" : a.status === "blocked" ? "차단" : "활성";
+
+  const acctRows = [...pending, ...others];
+  const acctCols: SheetColumn<CompanyAccount>[] = [
+    { key: "company", header: "업체명/소속", width: 130, copyText: (a) => a.company || "(없음)" },
+    { key: "name", header: "이름", width: 90, copyText: (a) => a.name || "-" },
+    { key: "email", header: "이메일(아이디)", width: 200, copyText: (a) => a.email },
+    {
+      key: "status", header: "상태", width: 150, wrap: true,
+      copyText: (a) => `${acctStatusLabel(a)}${a.emailVerified ? "/인증" : "/미인증"}`,
+      render: (a) => (
+        <div className="cellchips">
+          <span className={`chip chip-${a.status === "pending" ? "submitted" : a.status === "blocked" ? "rejected" : "approved"}`}>{acctStatusLabel(a)}</span>
+          {a.role === "admin" && <span className="chip chip-approved">시스템관리자</span>}
+          {!a.emailVerified && <span className="chip chip-submitted">이메일 미인증</span>}
+        </div>
+      ),
+    },
+    { key: "role", header: "역할", width: 180, noSelect: true, wrap: true, copyText: roleLabel, render: (a) => <RoleSelect a={a} /> },
+    {
+      key: "act", header: "처리", width: 230, noSelect: true, wrap: true, copyText: () => "",
+      render: (a) => (
+        <div className="cellbtns">
+          {a.status === "pending"
+            ? <button className="mini btn-approve" disabled={busyUid === a.uid || !a.emailVerified} title={a.emailVerified ? "" : "이메일 인증 후 승인 가능"} onClick={() => onApprove(a)}>승인</button>
+            : <button className="mini" disabled={busyUid === a.uid} onClick={() => onSetPassword(a)}>비번 변경</button>}
+          <button className="mini" disabled={busyUid === a.uid} onClick={() => onResetEmail(a)}>재설정 메일</button>
+          <button className="mini btn-reject" disabled={busyUid === a.uid} onClick={() => onDelete(a)}>삭제</button>
+        </div>
+      ),
+    },
+  ];
+
+  const tplCols: SheetColumn<PermitTemplate>[] = [
+    { key: "name", header: "예시 양식 이름", width: 320, copyText: (t) => t.name },
+    {
+      key: "act", header: "처리", width: 160, noSelect: true, wrap: true, copyText: () => "",
+      render: (t) => (
+        <div className="cellbtns">
+          <button className="mini" disabled={tplBusy} onClick={() => router.push(`/fill?template=${t.id}`)}>수정</button>
+          <button className="mini danger" disabled={tplBusy} onClick={() => removeTemplate(t)}>삭제</button>
+        </div>
+      ),
+    },
+  ];
+
+  type JsaTypeRow = { v: string; label: string };
+  const jsaTypeRows: JsaTypeRow[] = WORK_TYPES.filter((w) => w.v !== "etc").map((w) => ({ v: w.v, label: w.label.split(" (")[0] }));
+  const jsaCols: SheetColumn<JsaTypeRow>[] = [
+    { key: "label", header: "작업형태", width: 220, copyText: (w) => w.label },
+    { key: "status", header: "등록상태", width: 120, wrap: true, copyText: (w) => (refTypes.includes(w.v) ? "등록됨" : "미등록"),
+      render: (w) => <span className={`chip ${refTypes.includes(w.v) ? "chip-approved" : "chip-draft"}`}>{refTypes.includes(w.v) ? "등록됨" : "미등록"}</span> },
+    { key: "act", header: "편집", width: 130, noSelect: true, wrap: true, copyText: () => "",
+      render: (w) => <button className={`mini ${refWT === w.v ? "btn-accent" : ""}`} disabled={refBusy} onClick={() => selectRefWT(w.v)}>{refWT === w.v ? "편집 중" : "편집"}</button> },
+  ];
+
+  const permitCols: SheetColumn<PermitRecord>[] = [
+    { key: "no", header: "번호", width: 90, copyText: (p) => p.id.slice(0, 8) },
+    { key: "company", header: "업체명", width: 130, copyText: (p) => p.company || p.createdByEmail },
+    { key: "work", header: "작업내용", width: 280, copyText: (p) => p.data.workContent || "-" },
+    { key: "date", header: "작업일자", width: 110, copyText: (p) => p.data.workDate || "-" },
+    { key: "status", header: "상태", width: 100, wrap: true, copyText: (p) => STATUS_LABEL[p.status],
+      render: (p) => <span className={`chip chip-${p.status}`}>{STATUS_LABEL[p.status]}</span> },
+    { key: "submitted", header: "제출일시", width: 120, copyText: (p) => tsToStr(p.submittedAt) },
+    { key: "act", header: "처리", width: 130, noSelect: true, wrap: true, copyText: () => "",
+      render: (p) => (
+        <button className="mini" onClick={() => router.push(`/fill?id=${p.id}`)} style={p.status === "submitted" ? { background: "#0a2240", color: "#fff" } : undefined}>
+          {p.status === "submitted" ? "검토/처리" : "보기/출력"}
+        </button>
+      ) },
+  ];
+
   if (loading || !user) return <div className="loading"><span className="spinner" />불러오는 중…</div>;
 
   return (
@@ -223,54 +303,16 @@ export default function AdminPage() {
 
           {acctError && <p className="note note-error" style={{ marginBottom: 10 }}><span className="ico">⚠</span>{acctError}</p>}
 
-          {/* 승인 대기 */}
-          {pending.length > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#b45309", marginBottom: 8 }}>승인 대기 {pending.length}건</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {pending.map((a) => (
-                  <div key={a.uid} className="acct-row">
-                    <div className="acct-info">
-                      <span className="lead">{a.company || "(업체명 없음)"}</span>
-                      <span className="meta">{a.email}</span>
-                      <span className={`chip ${a.emailVerified ? "chip-approved" : "chip-submitted"}`}>{a.emailVerified ? "이메일 인증됨" : "이메일 미인증"}</span>
-                      <RoleSelect a={a} />
-                    </div>
-                    <div className="acct-actions">
-                      <button className="mini btn-approve" disabled={busyUid === a.uid || !a.emailVerified} title={a.emailVerified ? "" : "이메일 인증 후 승인 가능"} onClick={() => onApprove(a)}>승인</button>
-                      <button className="mini" disabled={busyUid === a.uid} onClick={() => onResetEmail(a)}>재설정 메일</button>
-                      <button className="mini btn-reject" disabled={busyUid === a.uid} onClick={() => onDelete(a)}>삭제</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 활성/차단 계정 */}
+          {pending.length > 0 && <p className="sheet-hint">승인 대기 {pending.length}건 — 이메일 인증이 완료된 계정만 “승인”할 수 있습니다. (셀을 드래그해 선택 후 Ctrl/⌘+C로 복사)</p>}
           {acctLoading ? (
             <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>불러오는 중…</p>
-          ) : others.length === 0 && pending.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>아직 가입한 계정이 없습니다. 사용자가 로그인 화면의 “회원가입”으로 가입합니다.</p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {others.map((a) => (
-                <div key={a.uid} className="acct-row">
-                  <div className="acct-info">
-                    <span className="lead">{a.company || "(업체명 없음)"}</span>
-                    <span className="meta">{a.email}</span>
-                    {a.role === "admin" && <span className="chip chip-approved">시스템관리자</span>}
-                    {!a.emailVerified && <span className="chip chip-submitted">이메일 미인증</span>}
-                    <RoleSelect a={a} />
-                  </div>
-                  <div className="acct-actions">
-                    <button className="mini" disabled={busyUid === a.uid} onClick={() => onSetPassword(a)}>비번 변경</button>
-                    <button className="mini" disabled={busyUid === a.uid} onClick={() => onResetEmail(a)}>재설정 메일</button>
-                    <button className="mini btn-reject" disabled={busyUid === a.uid} onClick={() => onDelete(a)}>삭제</button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <SheetTable
+              columns={acctCols}
+              rows={acctRows}
+              rowKey={(a) => a.uid}
+              emptyText="아직 가입한 계정이 없습니다. 사용자가 로그인 화면의 “회원가입”으로 가입합니다."
+            />
           )}
         </div>
 
@@ -284,21 +326,12 @@ export default function AdminPage() {
               <button className="mini" disabled={tplBusy} onClick={seedDefaults}>{tplBusy ? "생성 중…" : "기본 예시 생성"}</button>
             )}
           </div>
-          {templates.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
-              아직 예시 양식이 없습니다. “기본 예시 생성”으로 작업형태별 기본 양식 7종을 만들 수 있어요.
-            </p>
-          ) : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {templates.map((t) => (
-                <div key={t.id} className="tagcard">
-                  <span className="lead">{t.name}</span>
-                  <button className="mini" disabled={tplBusy} onClick={() => router.push(`/fill?template=${t.id}`)}>수정</button>
-                  <button className="mini danger" disabled={tplBusy} onClick={() => removeTemplate(t)}>삭제</button>
-                </div>
-              ))}
-            </div>
-          )}
+          <SheetTable
+            columns={tplCols}
+            rows={templates}
+            rowKey={(t) => t.id}
+            emptyText="아직 예시 양식이 없습니다. “기본 예시 생성”으로 작업형태별 기본 양식 7종을 만들 수 있어요."
+          />
         </div>
 
         <div className="panel">
@@ -306,34 +339,21 @@ export default function AdminPage() {
             <span className="panel-title" style={{ color: "#0d9488" }}>작업형태별 JSA 레퍼런스</span>
             <span className="panel-sub">작업형태마다 미리 작성해두면 업체가 작성 화면에서 “레퍼런스 불러오기”로 채웁니다.</span>
           </div>
-          <div className="form-row" style={{ alignItems: "center" }}>
-            <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <span>작업형태</span>
-              <select className="inp" style={{ width: 200 }} value={refWT} onChange={(e) => selectRefWT(e.target.value)}>
-                <option value="">선택…</option>
-                {WORK_TYPES.filter((w) => w.v !== "etc").map((w) => (
-                  <option key={w.v} value={w.v}>{w.label.split(" (")[0]}{refTypes.includes(w.v) ? " ✓" : ""}</option>
-                ))}
-              </select>
-            </label>
-            {refWT && (
-              <>
+          <SheetTable columns={jsaCols} rows={jsaTypeRows} rowKey={(w) => w.v} />
+          {refWT ? (
+            <div style={{ marginTop: 12 }}>
+              <div className="form-row" style={{ alignItems: "center", marginBottom: 6 }}>
+                <p style={{ margin: 0, fontSize: 13, color: "#334155" }}>
+                  <b>{refWTLabel(refWT)}</b> 레퍼런스 편집 — 단계/작업종류는 자유 입력입니다(관리자 작성용).
+                </p>
+                <div className="grow" />
                 <button className="mini btn-accent" disabled={refBusy} onClick={saveRef}>{refBusy ? "처리 중…" : "저장"}</button>
                 {refTypes.includes(refWT) && <button className="mini danger" disabled={refBusy} onClick={removeRef}>삭제</button>}
-              </>
-            )}
-          </div>
-          {refWT ? (
-            <div style={{ marginTop: 4 }}>
-              <p style={{ margin: "0 0 6px", fontSize: 12, color: "#64748b" }}>
-                <b>{refWTLabel(refWT)}</b> 레퍼런스 — 단계/작업종류는 자유 입력입니다(이 영역은 관리자 작성용).
-              </p>
+              </div>
               <JsaEditor rows={refRows} onChange={setRefRows} />
             </div>
           ) : (
-            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
-              작업형태를 선택하면 해당 JSA 레퍼런스를 작성/수정할 수 있습니다. {refTypes.length > 0 && `(등록됨: ${refTypes.map(refWTLabel).join(", ")})`}
-            </p>
+            <p className="sheet-hint" style={{ marginTop: 8 }}>위 표에서 작업형태의 “편집”을 누르면 해당 JSA 레퍼런스를 작성/수정할 수 있습니다.</p>
           )}
         </div>
 
@@ -387,46 +407,7 @@ export default function AdminPage() {
         ) : filtered.length === 0 ? (
           <div className="empty-state">해당 항목이 없습니다.</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table className="adm-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 90 }}>번호</th>
-                  <th style={{ width: 130 }}>업체명</th>
-                  <th>작업내용</th>
-                  <th style={{ width: 100 }}>작업일자</th>
-                  <th style={{ width: 90 }}>상태</th>
-                  <th style={{ width: 110 }}>제출일시</th>
-                  <th style={{ width: 130 }}>처리</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((p) => (
-                  <tr key={p.id}>
-                    <td data-label="번호" style={{ fontFamily: "monospace", fontSize: 12, color: "#64748b" }}>{p.id.slice(0, 8)}</td>
-                    <td data-label="업체명" style={{ fontWeight: 600 }}>{p.company || p.createdByEmail}</td>
-                    <td data-label="작업내용" className="cell-ellipsis" style={{ maxWidth: 260 }}>
-                      {p.data.workContent || "-"}
-                    </td>
-                    <td data-label="작업일자">{p.data.workDate || "-"}</td>
-                    <td data-label="상태">
-                      <span className={`chip chip-${p.status}`}>{STATUS_LABEL[p.status]}</span>
-                    </td>
-                    <td data-label="제출일시" style={{ fontSize: 12 }}>{tsToStr(p.submittedAt)}</td>
-                    <td className="act">
-                      <button
-                        className="mini"
-                        onClick={() => router.push(`/fill?id=${p.id}`)}
-                        style={p.status === "submitted" ? { background: "#0a2240", color: "#fff" } : undefined}
-                      >
-                        {p.status === "submitted" ? "검토/처리" : "보기/출력"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <SheetTable columns={permitCols} rows={filtered} rowKey={(p) => p.id} />
         )}
       </div>
     </div>
