@@ -1,5 +1,6 @@
 "use client";
 import React, { Suspense, useEffect, useState } from "react";
+import { doc, updateDoc } from "firebase/firestore";
 import { useSearchParams, useRouter } from "next/navigation";
 import { usePermit } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
@@ -12,13 +13,13 @@ import {
 } from "@/lib/form";
 import SignaturePad from "@/components/SignaturePad";
 import { sampleGeneral } from "@/lib/samples";
-import { emptyPermit } from "@/lib/types";
+import { emptyPermit, PermitData } from "@/lib/types";
 import { MANAGERS, SAFETY_REVIEWERS } from "@/lib/managers";
 import { savePermit, submitPermit, getPermit, saveAdminFields, completePermit, chainAction, PermitStatus, ChainStage, PermitChain } from "@/lib/permits";
 import {
   listTemplates, getTemplate, createTemplate, updateTemplate, PermitTemplate,
 } from "@/lib/templates";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import AccessGate from "@/components/AccessGate";
 import { listJsaRefs, getJsaRef } from "@/lib/jsaRefs";
 
@@ -33,8 +34,53 @@ const STATUS_LABEL: Record<PermitStatus, { text: string; color: string }> = {
 type SignatureTarget =
   | { kind: "education"; index: number }
   | { kind: "applicant" }
+  | { kind: "field"; field: FieldSignatureKey }
   | { kind: "approval" }
   | null;
+
+type FieldSignatureKey =
+  | "supervisorSign"
+  | "hotFireWatcherSign"
+  | "hotFireManagerSign"
+  | "confinedWatcherSign"
+  | "electricalCutoffPersonSign"
+  | "excavationBuriedCheckerSign"
+  | "heavySignalerSign"
+  | "worksheetAuthorSign"
+  | "riskParticipantsSign"
+  | "representativeSign";
+
+const FIELD_SIGNATURE_LABELS: Record<FieldSignatureKey, string> = {
+  supervisorSign: "작업감독자 서명",
+  hotFireWatcherSign: "화재감시자 서명",
+  hotFireManagerSign: "소방안전관리자 서명",
+  confinedWatcherSign: "감시인 서명",
+  electricalCutoffPersonSign: "차단인 서명",
+  excavationBuriedCheckerSign: "매설확인자 서명",
+  heavySignalerSign: "신호수/유도자 서명",
+  worksheetAuthorSign: "작성자/담당자 서명",
+  riskParticipantsSign: "위험성평가 참여자 서명",
+  representativeSign: "신청/강사 서명",
+};
+
+function SignatureField({
+  value,
+  readOnly,
+  onClick,
+}: {
+  value: string;
+  readOnly?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      {value
+        ? <img src={value} alt="서명" style={{ height: 38, width: 110, objectFit: "contain", border: "1px solid #e2e8f0", borderRadius: 4, background: "#fff" }} />
+        : <span style={{ fontSize: 12, color: "#94a3b8" }}>미서명</span>}
+      {!readOnly && <button className="mini" onClick={onClick}>{value ? "서명 수정" : "서명"}</button>}
+    </div>
+  );
+}
 
 function todayYmd(): string {
   const now = new Date();
@@ -46,7 +92,7 @@ function todayYmd(): string {
 function FillInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user, loading: authLoading, logout } = useAuth();
+  const { user, loading: authLoading, logout, refresh } = useAuth();
   const cloudId = searchParams.get("id");
   // 관리자 예시 양식 편집 모드: ?template=<id>(수정) / ?templateNew=1(신규)
   const templateId = searchParams.get("template");
@@ -71,6 +117,7 @@ function FillInner() {
   const [templateWorkType, setTemplateWorkType] = useState("");
   const [templateOrder, setTemplateOrder] = useState(999);
   const [signatureTarget, setSignatureTarget] = useState<SignatureTarget>(null);
+  const [saveApprovalPreset, setSaveApprovalPreset] = useState(false);
   // 클라우드 허가서 로드 결과: null=정상, "notfound"=문서 없음/권한 없음, "error"=조회 실패
   const [loadError, setLoadError] = useState<null | "notfound" | "error">(null);
 
@@ -203,6 +250,26 @@ function FillInner() {
     }
   };
 
+  const requiredSignatureChecks = () => {
+    const checks: { label: string; name: string; sign: string }[] = [
+      { label: "일반작업 작업감독자", name: data.supervisor, sign: data.supervisorSign },
+      { label: "Work Sheet 작성자/담당자", name: data.worksheetAuthor, sign: data.worksheetAuthorSign },
+      { label: "Work Sheet 위험성평가 참여자", name: data.riskParticipants, sign: data.riskParticipantsSign },
+      { label: "신청/강사", name: data.representativeSignName, sign: data.representativeSign },
+    ];
+    if (data.workTypes.includes("hot")) {
+      checks.push(
+        { label: "화재감시자", name: data.hotFireWatcher, sign: data.hotFireWatcherSign },
+        { label: "소방안전관리자", name: data.hotFireManager || "박세현", sign: data.hotFireManagerSign },
+      );
+    }
+    if (data.workTypes.includes("confined")) checks.push({ label: "감시인", name: data.confinedWatcher, sign: data.confinedWatcherSign });
+    if (data.workTypes.includes("electrical")) checks.push({ label: "차단인", name: data.electricalCutoffPerson, sign: data.electricalCutoffPersonSign });
+    if (data.workTypes.includes("excavation")) checks.push({ label: "매설확인자", name: data.excavationBuriedChecker, sign: data.excavationBuriedCheckerSign });
+    if (data.workTypes.includes("heavy")) checks.push({ label: "신호수/유도자", name: data.heavySignaler, sign: data.heavySignalerSign });
+    return checks;
+  };
+
   const validate = (): string[] => {
     const miss: string[] = [];
     if (!data.company.trim()) miss.push("업체명(부서명)");
@@ -214,6 +281,10 @@ function FillInner() {
     if (data.privacyConsent !== "agree") miss.push("개인정보 수집·이용 동의(동의 함)");
     if (!data.applicantName.trim()) miss.push("신청(업체) 성명");
     if (!data.applicantSign) miss.push("신청(업체) 서명");
+    requiredSignatureChecks().forEach((item) => {
+      if (!item.name.trim()) miss.push(`${item.label} 성명`);
+      if (!item.sign) miss.push(`${item.label} 서명`);
+    });
     return miss;
   };
 
@@ -227,6 +298,8 @@ function FillInner() {
     const warns: string[] = [];
     if (data.jsa.filter((r) => r.step.trim() || r.hazard.trim()).length === 0) warns.push("위험성평가(JSA)가 작성되지 않았습니다");
     if (data.eduSigners.filter((s) => s.name.trim()).length === 0) warns.push("교육서약 참여자 서명이 없습니다");
+    const requiredSignCount = requiredSignatureChecks().length + 1 + data.eduSigners.filter((s) => s.name.trim()).length;
+    warns.push(`현재 문서에서 필요한 서명 수: ${requiredSignCount}건`);
     const confirmMsg = warns.length
       ? "⚠️ 다음 항목이 비어 있습니다:\n\n· " + warns.join("\n· ") + "\n\n그래도 작업허가서를 제출하시겠습니까? (제출 후 수정 불가)"
       : "작업허가서를 제출하시겠습니까? 제출 후에는 수정이 불가합니다.";
@@ -450,19 +523,34 @@ function FillInner() {
     setData((d) => ({ ...d, eduSigners: d.eduSigners.filter((_, j) => j !== i) }));
   const setReviewer = (name: string) =>
     setData((d) => ({ ...d, admin: { ...d.admin, review: { ...d.admin.review, name, dept: "환경안전" } } }));
+  const saveMyApprovalSignature = async (signature: string) => {
+    if (!user || (user.role !== "manager" && user.role !== "admin")) return;
+    await updateDoc(doc(db, "users", user.uid), { savedApprovalSign: signature });
+    await refresh();
+  };
+  const setFieldSignature = (field: FieldSignatureKey, signature: string) =>
+    setData((d) => ({ ...d, [field]: signature } as PermitData));
 
   const signatureTitle = signatureTarget?.kind === "education"
     ? `${data.eduSigners[signatureTarget.index]?.name || `${signatureTarget.index + 1}번`} 참여자 서명`
     : signatureTarget?.kind === "applicant"
       ? `${data.applicantName || "신청자"} 업체 신청 서명`
+      : signatureTarget?.kind === "field"
+        ? FIELD_SIGNATURE_LABELS[signatureTarget.field]
       : `${permitStage === "factory" ? "공장장 최종" : permitStage === "safety" ? "환경안전" : "담당자 1차"} 승인 서명`;
   const signatureInitial = signatureTarget?.kind === "education"
     ? data.eduSigners[signatureTarget.index]?.sign
-    : signatureTarget?.kind === "applicant" ? data.applicantSign : undefined;
-  const saveSignature = (signature: string) => {
+    : signatureTarget?.kind === "applicant"
+      ? data.applicantSign
+      : signatureTarget?.kind === "field"
+        ? data[signatureTarget.field]
+        : undefined;
+  const saveSignature = async (signature: string) => {
     const target = signatureTarget;
+    const shouldSaveApprovalPreset = saveApprovalPreset;
     if (!target) return;
     setSignatureTarget(null);
+    setSaveApprovalPreset(false);
     if (target.kind === "education") {
       setSignerSign(target.index, signature);
     } else if (target.kind === "applicant") {
@@ -471,8 +559,16 @@ function FillInner() {
         applicantSign: signature,
         applicantDate: todayYmd(),
       }));
+    } else if (target.kind === "field") {
+      setFieldSignature(target.field, signature);
     } else {
-      void doApprove(signature);
+      try {
+        if (shouldSaveApprovalPreset) await saveMyApprovalSignature(signature);
+      } catch (e) {
+        alert("서명 저장 실패: " + ((e as Error)?.message ?? String(e)));
+        return;
+      }
+      await doApprove(signature);
     }
   };
 
@@ -597,7 +693,7 @@ function FillInner() {
                 )}
 
                 {/* 관리자 확인(●) — 시스템관리자, 제출 단계 */}
-                {isSys && permitStatus === "submitted" && items.length > 0 && (
+                {isSys && stageNow === "safety" && permitStatus === "submitted" && items.length > 0 && (
                   <div style={{ marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                       <span style={{ fontSize: 12, color: "#64748b" }}>업체 체크 확인(●)</span>
@@ -725,6 +821,9 @@ function FillInner() {
           {data.workTypes.includes("general") && (
             <Section title="② 일반작업 (공통사항)">
               <CheckGroup options={GENERAL} selected={data.general} onToggle={(v) => toggleIn("general", v)} cols={1} readOnly={isReadOnly} />
+              <Row label="작업감독자 서명" required>
+                <SignatureField value={data.supervisorSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "supervisorSign" })} />
+              </Row>
             </Section>
           )}
 
@@ -735,6 +834,14 @@ function FillInner() {
                 <Row label="화재감시자"><Text value={data.hotFireWatcher} onChange={(v) => update("hotFireWatcher", v)} readOnly={isReadOnly} /></Row>
                 <Row label="소방안전관리자" hint="고정"><Text value="박세현" onChange={() => {}} readOnly /></Row>
               </div>
+              <div className="tworow">
+                <Row label="화재감시자 서명" required>
+                  <SignatureField value={data.hotFireWatcherSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "hotFireWatcherSign" })} />
+                </Row>
+                <Row label="소방안전관리자 서명" required>
+                  <SignatureField value={data.hotFireManagerSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "hotFireManagerSign" })} />
+                </Row>
+              </div>
             </Section>
           )}
 
@@ -742,6 +849,9 @@ function FillInner() {
             <Section title="④ 밀폐공간작업">
               <CheckGroup options={CONFINED} selected={data.confined} onToggle={(v) => toggleIn("confined", v)} cols={1} readOnly={isReadOnly} />
               <Row label="감시인"><Text value={data.confinedWatcher} onChange={(v) => update("confinedWatcher", v)} readOnly={isReadOnly} /></Row>
+              <Row label="감시인 서명" required>
+                <SignatureField value={data.confinedWatcherSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "confinedWatcherSign" })} />
+              </Row>
             </Section>
           )}
 
@@ -752,6 +862,9 @@ function FillInner() {
                 <Row label="차단시간"><Text value={data.electricalCutoffTime} onChange={(v) => update("electricalCutoffTime", v)} readOnly={isReadOnly} /></Row>
                 <Row label="차단인"><Text value={data.electricalCutoffPerson} onChange={(v) => update("electricalCutoffPerson", v)} readOnly={isReadOnly} /></Row>
               </div>
+              <Row label="차단인 서명" required>
+                <SignatureField value={data.electricalCutoffPersonSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "electricalCutoffPersonSign" })} />
+              </Row>
             </Section>
           )}
 
@@ -765,6 +878,9 @@ function FillInner() {
             <Section title="⑦ 굴착작업">
               <CheckGroup options={EXCAVATION} selected={data.excavation} onToggle={(v) => toggleIn("excavation", v)} cols={1} readOnly={isReadOnly} />
               <Row label="매설확인자"><Text value={data.excavationBuriedChecker} onChange={(v) => update("excavationBuriedChecker", v)} readOnly={isReadOnly} /></Row>
+              <Row label="매설확인자 서명" required>
+                <SignatureField value={data.excavationBuriedCheckerSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "excavationBuriedCheckerSign" })} />
+              </Row>
             </Section>
           )}
 
@@ -775,6 +891,9 @@ function FillInner() {
                 <Row label="신호수/유도자"><Text value={data.heavySignaler} onChange={(v) => update("heavySignaler", v)} readOnly={isReadOnly} /></Row>
                 <Row label="장비종류"><Text value={data.heavyEquipType} onChange={(v) => update("heavyEquipType", v)} readOnly={isReadOnly} /></Row>
               </div>
+              <Row label="신호수/유도자 서명" required>
+                <SignatureField value={data.heavySignalerSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "heavySignalerSign" })} />
+              </Row>
             </Section>
           )}
 
@@ -813,6 +932,14 @@ function FillInner() {
               <Row label="작성자/담당자"><Text value={data.worksheetAuthor} onChange={(v) => update("worksheetAuthor", v)} readOnly={isReadOnly} /></Row>
               <Row label="위험성평가 참여자"><Text value={data.riskParticipants} onChange={(v) => update("riskParticipants", v)} readOnly={isReadOnly} /></Row>
             </div>
+            <div className="tworow">
+              <Row label="작성자/담당자 서명" required>
+                <SignatureField value={data.worksheetAuthorSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "worksheetAuthorSign" })} />
+              </Row>
+              <Row label="위험성평가 참여자 서명" required>
+                <SignatureField value={data.riskParticipantsSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "riskParticipantsSign" })} />
+              </Row>
+            </div>
             {!isReadOnly && data.workTypes.filter((wt) => jsaRefTypes.includes(wt)).length > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
                 <span style={{ fontSize: 12, color: "#64748b" }}>레퍼런스 불러오기:</span>
@@ -837,6 +964,9 @@ function FillInner() {
               <Row label="대표자(강사) 성명"><Text value={data.representativeSignName} onChange={(v) => update("representativeSignName", v)} readOnly={isReadOnly} /></Row>
               <Row label="교육 일자"><Text value={data.representativeSignDate} onChange={(v) => update("representativeSignDate", v)} type="date" readOnly={isReadOnly} /></Row>
             </div>
+            <Row label="신청/강사 서명" required>
+              <SignatureField value={data.representativeSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "representativeSign" })} />
+            </Row>
             <div style={{ marginTop: 10 }}>
               {data.eduSigners.length === 0 && <p className="muted">등록된 참여자가 없습니다.</p>}
               {data.eduSigners.map((s, i) => (
@@ -902,8 +1032,16 @@ function FillInner() {
         <SignaturePad
           title={signatureTitle}
           initial={signatureInitial}
+          savedSignature={signatureTarget.kind === "approval" ? user?.savedApprovalSign : undefined}
+          canSavePreset={signatureTarget.kind === "approval" && !!user && (user.role === "manager" || user.role === "admin")}
+          savePreset={saveApprovalPreset}
           onSave={saveSignature}
-          onClose={() => setSignatureTarget(null)}
+          onUseSaved={() => {
+            if (!user?.savedApprovalSign) return;
+            void saveSignature(user.savedApprovalSign);
+          }}
+          onToggleSavePreset={setSaveApprovalPreset}
+          onClose={() => { setSignatureTarget(null); setSaveApprovalPreset(false); }}
         />
       )}
     </div>

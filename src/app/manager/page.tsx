@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { listChainPermits, PermitRecord, PermitStatus } from "@/lib/permits";
+import SheetTable, { SheetColumn } from "@/components/SheetTable";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
   draft: "임시저장", submitted: "승인 대기", approved: "승인", rejected: "반려됨", completed: "완료",
@@ -23,6 +24,7 @@ function tsToStr(ts: unknown): string {
 }
 
 const KIND_LABEL: Record<string, string> = { requester: "담당자", safety: "환경안전", factory: "공장장" };
+const STAGE_LABEL: Record<string, string> = { manager: "담당자 1차", safety: "환경안전", factory: "공장장 최종", done: "완료" };
 
 export default function ManagerPage() {
   const { user, loading, logout } = useAuth();
@@ -52,7 +54,6 @@ export default function ManagerPage() {
     return <div className="loading"><span className="spinner" />불러오는 중…</div>;
   }
 
-  const STAGE_LABEL: Record<string, string> = { manager: "담당자 1차", safety: "환경안전", factory: "공장장 최종", done: "완료" };
   const isMyTurn = (p: PermitRecord) =>
     p.status === "submitted" && (
       (user.managerKind === "requester" && p.stage === "manager") ||
@@ -61,6 +62,53 @@ export default function ManagerPage() {
   const filtered = permits.filter((p) => filter === "all" || p.status === filter);
   const count = (s: PermitStatus) => permits.filter((p) => p.status === s).length;
   const myTurnCount = permits.filter(isMyTurn).length;
+  const permitCols: SheetColumn<PermitRecord>[] = [
+    {
+      key: "company", header: "업체", width: 200,
+      copyText: (p) => p.company || p.createdByEmail,
+      render: (p) => <span style={{ fontWeight: 600 }}>{p.company || p.createdByEmail}</span>,
+    },
+    {
+      key: "workContent", header: "작업내용", width: 280,
+      copyText: (p) => p.data.workContent || "-",
+    },
+    {
+      key: "workDate", header: "작업일자", width: 110,
+      copyText: (p) => p.data.workDate || "-",
+    },
+    {
+      key: "status", header: "상태", width: 160, wrap: true,
+      copyText: (p) => {
+        const parts = [STATUS_LABEL[p.status]];
+        if (p.status === "submitted" && p.stage) parts.push(STAGE_LABEL[p.stage]);
+        if (isMyTurn(p)) parts.push("내 차례");
+        return parts.join(" / ");
+      },
+      render: (p) => (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+          <span className={`chip chip-${p.status}`}>{STATUS_LABEL[p.status]}</span>
+          {p.status === "submitted" && p.stage && <span style={{ fontSize: 11, color: "#64748b" }}>{STAGE_LABEL[p.stage]}</span>}
+          {isMyTurn(p) && <span className="chip chip-submitted">내 차례</span>}
+        </div>
+      ),
+    },
+    {
+      key: "submittedAt", header: "제출일시", width: 120,
+      copyText: (p) => tsToStr(p.submittedAt),
+      render: (p) => <span style={{ fontSize: 12 }}>{tsToStr(p.submittedAt)}</span>,
+    },
+    {
+      key: "action", header: "", width: 90, noSelect: true,
+      copyText: () => "",
+      render: (p) => (
+        <div className="cellbtns">
+          <button className={`mini ${isMyTurn(p) ? "btn-accent" : ""}`} onClick={() => router.push(`/fill?id=${p.id}`)}>
+            {isMyTurn(p) ? "결재" : "보기"}
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="layout">
@@ -94,34 +142,7 @@ export default function ManagerPage() {
         ) : filtered.length === 0 ? (
           <div className="empty-rich"><div className="t">해당 상태의 결재 건이 없습니다.</div></div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table className="adm-table">
-              <thead>
-                <tr>
-                  <th>업체</th><th>작업내용</th><th style={{ width: 100 }}>작업일자</th>
-                  <th style={{ width: 90 }}>상태</th><th style={{ width: 110 }}>제출일시</th><th style={{ width: 90 }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((p) => (
-                  <tr key={p.id}>
-                    <td data-label="업체" style={{ fontWeight: 600 }}>{p.company || p.createdByEmail}</td>
-                    <td data-label="작업내용" className="cell-ellipsis" style={{ maxWidth: 260 }}>{p.data.workContent || "-"}</td>
-                    <td data-label="작업일자">{p.data.workDate || "-"}</td>
-                    <td data-label="상태">
-                      <span className={`chip chip-${p.status}`}>{STATUS_LABEL[p.status]}</span>
-                      {p.status === "submitted" && p.stage && <span style={{ fontSize: 11, color: "#64748b", marginLeft: 6 }}>{STAGE_LABEL[p.stage]}</span>}
-                      {isMyTurn(p) && <span className="chip chip-submitted" style={{ marginLeft: 6 }}>▶ 내 차례</span>}
-                    </td>
-                    <td data-label="제출일시" style={{ fontSize: 12 }}>{tsToStr(p.submittedAt)}</td>
-                    <td className="act">
-                      <button className={`mini ${isMyTurn(p) ? "btn-accent" : ""}`} onClick={() => router.push(`/fill?id=${p.id}`)}>{isMyTurn(p) ? "결재" : "보기"}</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <SheetTable columns={permitCols} rows={filtered} rowKey={(p) => p.id} />
         )}
       </div>
     </div>

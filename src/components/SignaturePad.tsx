@@ -6,12 +6,22 @@ import React, { useEffect, useRef, useState } from "react";
 export default function SignaturePad({
   title = "직접 서명",
   initial,
+  savedSignature,
+  canSavePreset = false,
+  savePreset = false,
   onSave,
+  onUseSaved,
+  onToggleSavePreset,
   onClose,
 }: {
   title?: string;
   initial?: string;
+  savedSignature?: string;
+  canSavePreset?: boolean;
+  savePreset?: boolean;
   onSave: (dataUrl: string) => void;
+  onUseSaved?: () => void;
+  onToggleSavePreset?: (next: boolean) => void;
   onClose: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -95,6 +105,16 @@ export default function SignaturePad({
           <strong style={{ fontSize: 16, color: "#0a2240" }}>{title}</strong>
           <span style={{ marginLeft: 8, fontSize: 12, color: "#94a3b8" }}>아래 칸에 손가락 또는 마우스로 서명하세요.</span>
         </div>
+        {savedSignature && onUseSaved && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, padding: 10, border: "1px solid #dbe2ea", borderRadius: 10, background: "#f8fafc" }}>
+            <img src={savedSignature} alt="저장된 서명" style={{ width: 120, height: 48, objectFit: "contain", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 6 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 2 }}>저장된 승인 서명</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>기존 서명을 다시 사용할 수 있습니다.</div>
+            </div>
+            <button onClick={onUseSaved} style={btn("#fff", "#0f172a", "#cbd5e1")}>저장된 서명 사용</button>
+          </div>
+        )}
         <canvas
           ref={canvasRef}
           width={W}
@@ -109,6 +129,12 @@ export default function SignaturePad({
             touchAction: "none", cursor: "crosshair", display: "block",
           }}
         />
+        {canSavePreset && onToggleSavePreset && (
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13, color: "#334155" }}>
+            <input type="checkbox" checked={savePreset} onChange={(e) => onToggleSavePreset(e.target.checked)} />
+            이 서명을 내 결재 서명으로 저장
+          </label>
+        )}
         <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
           <button onClick={clear} style={btn("#fff", "#475569", "#cbd5e1")}>지우기</button>
           <button onClick={onClose} style={btn("#fff", "#475569", "#cbd5e1")}>취소</button>

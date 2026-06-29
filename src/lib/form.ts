@@ -59,10 +59,20 @@ function imgFit(b: Box, src: string): ImageItem {
   return { kind: "image", page: b.page, x: b.x + b.w * 0.04, y: b.y + b.h * 0.08, w: b.w * 0.92, h: b.h * 0.84, src };
 }
 
+function signBox(ref: string, src: string, startFrac = 0.42, widthFrac = 0.34, topFrac = 0.08, heightFrac = 0.84): ImageItem {
+  const b = cell(ref);
+  return imgFit({
+    ...b,
+    x: b.x + b.w * startFrac,
+    y: b.y + b.h * topFrac,
+    w: b.w * widthFrac,
+    h: b.h * heightFrac,
+  }, src);
+}
+
 // 성명 셀 안의 인쇄된 "(인)" 앞에 직접 서명을 배치한다.
 function signatureVal(ref: string, src: string): ImageItem {
-  const b = cell(ref);
-  return imgFit({ ...b, x: b.x + b.w * 0.42, w: b.w * 0.34 }, src);
+  return signBox(ref, src);
 }
 
 const DEF_FONT = 7.5; // pt at print scale
@@ -282,13 +292,19 @@ export function buildOverlays(data: PermitData): Overlay[] {
     if (data.hotFireWatcher) push(txt("F63", data.hotFireWatcher, { x: fw.x + fw.w * 0.45, w: fw.w * 0.28, align: "left", valign: "middle", fontPt: 6.5 }));
     const fm = cell("K63");
     push(txt("K63", "박세현", { x: fm.x + fm.w * 0.48, w: fm.w * 0.20, align: "left", valign: "middle", fontPt: 6.5 }));
+    if (data.hotFireWatcherSign) out.push(signBox("F63", data.hotFireWatcherSign, 0.73, 0.20, 0.14, 0.70));
+    if (data.hotFireManagerSign) out.push(signBox("K63", data.hotFireManagerSign, 0.72, 0.21, 0.14, 0.70));
   }
   // 인쇄된 라벨 뒤에 값만 기입 (이중 겹침 방지)
   if (selWT("confined") && data.confinedWatcher) push(afterLabel("G71", data.confinedWatcher, 0.22, 0.5));
+  if (selWT("confined") && data.confinedWatcherSign) out.push(signBox("G71", data.confinedWatcherSign, 0.74, 0.18, 0.14, 0.70));
   if (selWT("electrical") && data.electricalCutoffTime) push(afterLabel("E77", data.electricalCutoffTime, 0.42, 0.55));
   if (selWT("electrical") && data.electricalCutoffPerson) push(afterLabel("I77", data.electricalCutoffPerson, 0.24, 0.45));
+  if (selWT("electrical") && data.electricalCutoffPersonSign) out.push(signBox("I77", data.electricalCutoffPersonSign, 0.72, 0.20, 0.14, 0.70));
   if (selWT("excavation") && data.excavationBuriedChecker) push(afterLabel("G87", data.excavationBuriedChecker, 0.28, 0.5));
+  if (selWT("excavation") && data.excavationBuriedCheckerSign) out.push(signBox("G87", data.excavationBuriedCheckerSign, 0.74, 0.18, 0.14, 0.70));
   if (selWT("heavy") && data.heavySignaler) push(afterLabel("U1", data.heavySignaler, 0.42, 0.5));
+  if (selWT("heavy") && data.heavySignalerSign) out.push(signBox("U1", data.heavySignalerSign, 0.73, 0.18, 0.14, 0.70));
   if (selWT("heavy") && data.heavyEquipType) { const ab = cell("AA5"); push(txt("AA5", data.heavyEquipType, { x: ab.x, w: 0.14, align: "left", valign: "middle", fontPt: 6.5 })); }
 
   // ② 일반작업 구역 작업감독자(G55) = 업체 작업감독자(C7)와 동일 ("작업감독자 :" 와 "(인)" 사이)
@@ -296,6 +312,7 @@ export function buildOverlays(data: PermitData): Overlay[] {
     const gb = cell("G55");
     push(txt("G55", data.supervisor, { x: gb.x + gb.w * 0.42, w: gb.w * 0.30, align: "center", valign: "middle", fontPt: 6.5 }));
   }
+  if (data.supervisorSign) out.push(signBox("G55", data.supervisorSign, 0.76, 0.16, 0.14, 0.70));
 
   // ⑪ 에너지원
   if (data.energyMode === "none") push(squareMark("Q31"));
@@ -312,7 +329,9 @@ export function buildOverlays(data: PermitData): Overlay[] {
 
   // ⑫ Work Sheet
   if (data.worksheetAuthor) push(txt("A97", `작성자/담당자 :     ${data.worksheetAuthor}     (인)`, { cover: true, fontPt: 7 }));
-  if (data.riskParticipants) push(txt("F97", `위험성평가 참여자 : ${data.riskParticipants}`, { cover: true, fontPt: 7 }));
+  if (data.worksheetAuthorSign) out.push(signBox("A97", data.worksheetAuthorSign, 0.72, 0.14, 0.10, 0.72));
+  if (data.riskParticipants) push(txt("F97", `위험성평가 참여자 : ${data.riskParticipants}     (인)`, { cover: true, fontPt: 7 }));
+  if (data.riskParticipantsSign) out.push(signBox("F97", data.riskParticipantsSign, 0.74, 0.14, 0.10, 0.72));
 
   data.jsa.slice(0, 6).forEach((r, i) => {
     const rw = JSA_ROWS[i];
@@ -347,22 +366,23 @@ export function buildOverlays(data: PermitData): Overlay[] {
     const col = i % 3, rw = EDU_ROWS[Math.floor(i / 3)];
     if (s.name) {
       const nc = cell(`${EDU_COLS[col]}${rw}`);
-      push(boxText({ ...nc, y: nc.y + nc.h * 0.03, h: nc.h * 0.94 }, s.name,
-        { align: "center", valign: "middle", fontPt: 6.5, wrap: false }));
+      push(boxText({ ...nc, x: nc.x + nc.w * 0.03, y: nc.y + nc.h * 0.10, w: nc.w * 0.90, h: nc.h * 0.78 }, s.name,
+        { align: "center", valign: "middle", fontPt: 6.2, wrap: false }));
     }
-    // 병합된 실제 서명 칸의 좌측 70%를 사용해 인쇄된 "(인)"과 겹치지 않게 정렬한다.
+    // 병합된 실제 서명 칸의 좌측 62%만 사용해 우측 "(인)"과 겹치지 않게 하고, 세로도 한 줄 내려 맞춘다.
     if (s.sign) {
       const sc = cell(`${EDU_SIGN_COLS[col]}${rw}`);
       out.push(imgFit({
         ...sc,
-        x: sc.x + sc.w * 0.03,
-        y: sc.y + sc.h * 0.03,
-        w: sc.w * 0.70,
-        h: sc.h * 0.94,
+        x: sc.x + sc.w * 0.05,
+        y: sc.y + sc.h * 0.12,
+        w: sc.w * 0.62,
+        h: sc.h * 0.68,
       }, s.sign));
     }
   });
   if (data.representativeSignName) push(nameVal("S150", data.representativeSignName));
+  if (data.representativeSign) out.push(signBox("S150", data.representativeSign, 0.44, 0.24, 0.12, 0.68));
   if (data.representativeSignDate) push(txt("X150", fmtKDate(data.representativeSignDate), { fontPt: 7 }));
 
   // 개인정보 동의
@@ -392,7 +412,7 @@ export function buildOverlays(data: PermitData): Overlay[] {
     if (k === "complete" && data.manager) { dept = managerDept(data.manager) || dept; name = data.manager; }
     if (dept) push(deptVal(`T${rw}`, dept));
     if (name) push(nameVal(`X${rw}`, name));
-    if (s.sign) out.push(signatureVal(`X${rw}`, s.sign));
+    if (s.sign) out.push(signBox(`X${rw}`, s.sign, 0.46, 0.23, 0.16, 0.62));
     // 날짜: fmtKDate 폭(~0.121)이 AB셀(0.116)보다 넓고 셀 끝이 페이지 우측 끝 → 박스를 좌측으로 넓혀 셀 안에 맞춤 (신청 AB167과 동일 처리)
     if (s.date) { const ab = cell(`AB${rw}`); push(txt(`AB${rw}`, fmtKDate(s.date), { x: ab.x - ab.w * 0.18, w: ab.w * 1.18, fontPt: 7 })); }
   });

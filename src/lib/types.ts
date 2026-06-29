@@ -43,25 +43,32 @@ export interface PermitData {
 
   // ② 일반작업(공통사항)
   general: string[];
+  supervisorSign: string;   // 일반작업 작업감독자 서명
   // ③ 화기작업
   hot: string[];
   hotFireWatcher: string;   // 화재감시자
+  hotFireWatcherSign: string;
   hotFireManager: string;   // 소방안전관리자
+  hotFireManagerSign: string;
   // ④ 밀폐공간
   confined: string[];
   confinedWatcher: string;  // 감시인
+  confinedWatcherSign: string;
   // ⑤ 전기차단
   electrical: string[];
   electricalCutoffTime: string; // 차단시간
   electricalCutoffPerson: string; // 차단인
+  electricalCutoffPersonSign: string;
   // ⑥ 고소작업
   elevated: string[];
   // ⑦ 굴착작업
   excavation: string[];
   excavationBuriedChecker: string; // 매설확인자
+  excavationBuriedCheckerSign: string;
   // ⑧ 중장비취급
   heavy: string[];
   heavySignaler: string;   // 신호수/유도자
+  heavySignalerSign: string;
   heavyEquipType: string;  // 장비종류
   // ⑨ 방사능
   radiation: string[];
@@ -75,12 +82,15 @@ export interface PermitData {
 
   // ⑫ JSA (Work Sheet)
   worksheetAuthor: string;   // A97 작성자/담당자
+  worksheetAuthorSign: string;
   riskParticipants: string;  // F97 위험성평가 참여자
+  riskParticipantsSign: string;
   jsa: JsaRow[];
 
   // 환경안전 교육실시 및 서약
   eduSigners: SignSlot[];        // 교육 참여자 서명 (성명만, 서명은 현장 수기)
   representativeSignName: string; // S150 대표자 이름
+  representativeSign: string;     // S150 대표자(강사) 서명
   representativeSignDate: string; // X150 날짜
 
   // 개인정보 동의
@@ -109,14 +119,14 @@ export function emptyPermit(): PermitData {
     company: "", representative: "", supervisor: "", workerCount: "",
     emergencyContact: "", manager: "", workDate: "", startTime: "", endTime: "", workContent: "",
     workTypes: [], workTypeEtc: "", processes: [], processEtc: "", gear: [], gearEtc: "",
-    general: [], hot: [], hotFireWatcher: "", hotFireManager: "",
-    confined: [], confinedWatcher: "", electrical: [], electricalCutoffTime: "", electricalCutoffPerson: "",
-    elevated: [], excavation: [], excavationBuriedChecker: "",
-    heavy: [], heavySignaler: "", heavyEquipType: "", radiation: [],
+    general: [], supervisorSign: "", hot: [], hotFireWatcher: "", hotFireWatcherSign: "", hotFireManager: "", hotFireManagerSign: "",
+    confined: [], confinedWatcher: "", confinedWatcherSign: "", electrical: [], electricalCutoffTime: "", electricalCutoffPerson: "", electricalCutoffPersonSign: "",
+    elevated: [], excavation: [], excavationBuriedChecker: "", excavationBuriedCheckerSign: "",
+    heavy: [], heavySignaler: "", heavySignalerSign: "", heavyEquipType: "", radiation: [],
     energyMode: "", energyTarget: "", energyLocation: "", energyPerson: "", energyDeferred: false,
-    worksheetAuthor: "", riskParticipants: "",
+    worksheetAuthor: "", worksheetAuthorSign: "", riskParticipants: "", riskParticipantsSign: "",
     jsa: [],
-    eduSigners: [], representativeSignName: "", representativeSignDate: "",
+    eduSigners: [], representativeSignName: "", representativeSign: "", representativeSignDate: "",
     privacyConsent: "",
     applicantDept: "", applicantName: "", applicantDate: "", applicantSign: "",
     admin: {
