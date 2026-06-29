@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, browserSessionPersistence, setPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 
@@ -20,7 +20,11 @@ const app = isClient && apiKey
 
 export const auth = app ? getAuth(app) : ({} as ReturnType<typeof getAuth>);
 // Firebase 인증 메일(이메일 인증·비밀번호 재설정)을 한국어 기본 템플릿으로 발송
-if (app) auth.languageCode = "ko";
+if (app) {
+  auth.languageCode = "ko";
+  // 세션 지속: 같은 탭에선 유지되지만 브라우저/탭을 닫으면 로그아웃 (보안·편의 균형)
+  setPersistence(auth, browserSessionPersistence).catch(() => { /* 실패해도 기본 동작 유지 */ });
+}
 export const db = app ? getFirestore(app, "default") : ({} as ReturnType<typeof getFirestore>);
 // Cloud Functions(admin SDK 백엔드) — 기본 리전 us-central1 (functions setGlobalOptions와 일치)
 export const functions = app ? getFunctions(app) : ({} as ReturnType<typeof getFunctions>);

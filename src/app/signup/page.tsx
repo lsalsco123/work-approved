@@ -17,6 +17,7 @@ export default function SignupPage() {
   const router = useRouter();
   const [isAlsco, setIsAlsco] = useState(false);
   const [company, setCompany] = useState("");
+  const [alscoName, setAlscoName] = useState("");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
@@ -28,7 +29,9 @@ export default function SignupPage() {
     e.preventDefault();
     setError("");
     if (pw !== pw2) { setError("비밀번호가 일치하지 않습니다."); return; }
-    const companyName = isAlsco ? ALSCO_COMPANY : company;
+    if (isAlsco && !alscoName.trim()) { setError("이름을 입력하세요."); return; }
+    // 알스코 인원은 소속이 모두 "LS알스코"라 구분이 안 되므로 이름을 함께 저장해 관리자 화면에서 식별
+    const companyName = isAlsco ? `${ALSCO_COMPANY} ${alscoName.trim()}` : company;
     setSubmitting(true);
     try {
       await signUpCompany(email, companyName, pw);
@@ -77,10 +80,16 @@ export default function SignupPage() {
               </div>
             </div>
             {isAlsco ? (
-              <div className="field">
-                <label>소속</label>
-                <input value={ALSCO_COMPANY} disabled style={{ background: "#f1f5f9", color: "#475569" }} />
-              </div>
+              <>
+                <div className="field">
+                  <label>소속</label>
+                  <input value={ALSCO_COMPANY} disabled style={{ background: "#f1f5f9", color: "#475569" }} />
+                </div>
+                <div className="field">
+                  <label>이름</label>
+                  <input value={alscoName} onChange={(e) => setAlscoName(e.target.value)} placeholder="예) 김승정" required />
+                </div>
+              </>
             ) : (
               <div className="field">
                 <label>업체명</label>

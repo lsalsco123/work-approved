@@ -251,7 +251,7 @@ export default function AdminPage() {
           {acctLoading ? (
             <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>불러오는 중…</p>
           ) : others.length === 0 && pending.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>아직 가입한 업체가 없습니다. 업체가 로그인 화면의 “업체 회원가입”으로 가입합니다.</p>
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>아직 가입한 계정이 없습니다. 사용자가 로그인 화면의 “회원가입”으로 가입합니다.</p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {others.map((a) => (

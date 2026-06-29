@@ -127,7 +127,7 @@ export default function LoginPage() {
           </button>
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, fontSize: 13 }}>
-            <Link href="/signup" style={{ color: "#fff", fontWeight: 600, textDecoration: "none" }}>업체 회원가입</Link>
+            <Link href="/signup" style={{ color: "#fff", fontWeight: 600, textDecoration: "none" }}>회원가입</Link>
             <button type="button" onClick={handleReset} style={{ background: "none", border: "none", color: "rgba(255,255,255,.8)", fontSize: 13, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
               비밀번호를 잊으셨나요?
             </button>
