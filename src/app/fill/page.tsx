@@ -146,7 +146,11 @@ function FillInner() {
   useEffect(() => {
     if (!loaded || !cloudLoaded || !user || user.role !== "guest") return;
     if (templateMode || !user.company) return;
-    setData((d) => (d.company === user.company ? d : { ...d, company: user.company }));
+    setData((d) => {
+      const nextCompany = user.company;
+      if (d.company === nextCompany && d.applicantDept === nextCompany) return d;
+      return { ...d, company: nextCompany, applicantDept: nextCompany };
+    });
   }, [loaded, cloudLoaded, user, templateMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 인증 확인 중이거나 미로그인(리다이렉트 대기) 상태에서는 내부 UI를 렌더하지 않음
@@ -328,6 +332,7 @@ function FillInner() {
         ...blank,
         ...t.data,
         company: user?.company || data.company,
+        applicantDept: user?.company || data.company,
         applicantDate: "",
         applicantSign: "",
         eduSigners: (t.data.eduSigners || []).map((signer) => ({ ...signer, sign: "" })),
@@ -381,12 +386,16 @@ function FillInner() {
     if (permitStage === "safety") {
       reviewerName = data.admin.review.name || "박세현";
     }
-    const comment = window.prompt("결재 의견 (선택 — 담당자 1차는 공사 내용을 적어 올리세요. 공장장 승인은 생략 가능):", "");
-    if (comment === null) return;
+    let comment = "";
+    if (permitStage !== "factory") {
+      const input = window.prompt("결재 의견 (선택 — 담당자 1차는 공사 내용을 적어 올리세요):", "");
+      if (input === null) return;
+      comment = input.trim();
+    }
     const prevStage = permitStage || "manager";
     setSaving(true);
     try {
-      const r = await chainAction(permitId, "approve", comment.trim(), reviewerName, signature);
+      const r = await chainAction(permitId, "approve", comment, reviewerName, signature);
       const kind = prevStage === "manager" ? "to_safety" : prevStage === "safety" ? "to_factory" : "final";
       await postNotify(kind);
       alert(r.status === "approved" ? "최종 승인되었습니다." : "승인하여 다음 단계로 넘겼습니다.");
@@ -651,12 +660,16 @@ function FillInner() {
                     {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 ) : (
-                  <button className="mini" onClick={() => setData(sampleGeneral())}>예시 채우기</button>
+                  <button className="mini" onClick={() => {
+                    const sample = sampleGeneral();
+                    const fixedCompany = user.company || sample.company;
+                    setData({ ...sample, company: fixedCompany, applicantDept: fixedCompany });
+                  }}>예시 채우기</button>
                 )
               )}
               <button className="mini danger" onClick={() => {
                 if (window.confirm("모든 입력을 초기화할까요?")) {
-                  setData({ ...emptyPermit(), company: user.company || "" });
+                  setData({ ...emptyPermit(), company: user.company || "", applicantDept: user.company || "" });
                 }
               }}>초기화</button>
             </div>
@@ -859,7 +872,7 @@ function FillInner() {
 
           <Section title="신청 (업체)">
             <div className="tworow">
-              <Row label="소속"><Text value={data.applicantDept} onChange={(v) => update("applicantDept", v)} readOnly={isReadOnly} /></Row>
+              <Row label="소속"><Text value={data.applicantDept} onChange={(v) => update("applicantDept", v)} readOnly={isReadOnly || isGuest} /></Row>
               <Row label="성명"><Text value={data.applicantName} onChange={(v) => update("applicantName", v)} readOnly={isReadOnly} /></Row>
             </div>
             <Row label="신청일자" hint="서명 저장 시 오늘 날짜가 자동 입력됩니다."><Text value={data.applicantDate} onChange={() => {}} type="date" readOnly /></Row>

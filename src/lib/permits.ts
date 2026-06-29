@@ -120,8 +120,21 @@ export async function listChainPermits(
 ): Promise<PermitRecord[]> {
   let docs;
   if (managerKind === "requester") {
-    const q = query(collection(db, COL), where("data.manager", "==", managerName), limit(max));
-    docs = (await getDocs(q)).docs;
+    const statuses: PermitStatus[] = ["submitted", "approved", "rejected", "completed"];
+    const snaps = await Promise.all(
+      statuses.map((status) =>
+        getDocs(query(
+          collection(db, COL),
+          where("data.manager", "==", managerName),
+          where("status", "==", status),
+          limit(max),
+        )),
+      ),
+    );
+    const seen = new Set<string>();
+    docs = snaps
+      .flatMap((snap) => snap.docs)
+      .filter((d) => (seen.has(d.id) ? false : (seen.add(d.id), true)));
   } else {
     // 공장장(factory): 자기 차례(stage=factory) + 완료(approved/completed)만 — rules 와 일치
     const [s1, s2] = await Promise.all([
