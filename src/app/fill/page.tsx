@@ -320,14 +320,16 @@ function FillInner() {
       alert("다음 필수 항목을 확인해주세요:\n\n· " + missing.join("\n· "));
       return;
     }
+    // 실제로 비어 있는 권장 항목만 경고로 모은다 (필수 항목은 위 validate 에서 이미 차단됨).
     const warns: string[] = [];
     if (data.jsa.filter((r) => r.step.trim() || r.hazard.trim()).length === 0) warns.push("위험성평가(JSA)가 작성되지 않았습니다");
     if (data.eduSigners.filter((s) => s.name.trim()).length === 0) warns.push("교육서약 참여자 서명이 없습니다");
+    // 서명 수는 안내 정보일 뿐 — '비어 있음' 경고가 아니라 별도 안내문으로만 표기한다.
     const requiredSignCount = requiredSignatureChecks().length + 1 + data.eduSigners.filter((s) => s.name.trim()).length;
-    warns.push(`현재 문서에서 필요한 서명 수: ${requiredSignCount}건`);
+    const signInfo = `참고: 이 문서에 필요한 서명 수는 총 ${requiredSignCount}건입니다.`;
     const confirmMsg = warns.length
-      ? "⚠️ 다음 항목이 비어 있습니다:\n\n· " + warns.join("\n· ") + "\n\n그래도 작업허가서를 제출하시겠습니까? (제출 후 수정 불가)"
-      : "작업허가서를 제출하시겠습니까? 제출 후에는 수정이 불가합니다.";
+      ? "⚠️ 다음 권장 항목이 비어 있습니다:\n\n· " + warns.join("\n· ") + `\n\n${signInfo}\n\n그래도 작업허가서를 제출하시겠습니까? (제출 후 수정 불가)`
+      : `작업허가서를 제출하시겠습니까? 제출 후에는 수정이 불가합니다.\n\n${signInfo}`;
     if (!window.confirm(confirmMsg)) return;
     setSaving(true);
     try {
