@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import BuiltBy from "@/components/BuiltBy";
 import {
   listAllPermits, PermitRecord, PermitStatus,
 } from "@/lib/permits";
@@ -463,6 +464,7 @@ export default function AdminPage() {
           <SheetTable columns={permitCols} rows={filtered} rowKey={(p) => p.id} />
         )}
       </div>
+      <BuiltBy />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import BuiltBy from "@/components/BuiltBy";
 import AccessGate from "@/components/AccessGate";
 import { listMyPermits, PermitRecord, PermitStatus, ChainStage } from "@/lib/permits";
 
@@ -181,6 +182,7 @@ function MyDashboard() {
           </div>
         )}
       </div>
+      <BuiltBy />
     </div>
   );
 }
