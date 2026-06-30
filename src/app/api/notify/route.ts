@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const NOTIFY_TO = process.env.NOTIFY_EMAIL ?? "sehyun.park@alsco.co.kr";
+const NOTIFY_TO = process.env.NOTIFY_EMAIL ?? "seungjung.kim@alsco.co.kr";
 // alsco.co.kr 도메인이 Resend에서 인증되지 않은 경우 onboarding@resend.dev 사용
 const FROM = process.env.RESEND_FROM ?? "작업허가서 시스템 <onboarding@resend.dev>";
 
