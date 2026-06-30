@@ -1,0 +1,123 @@
+"use client";
+import React, { useRef, useState } from "react";
+import {
+  PermitAttachment, uploadAttachment, removeAttachment, formatBytes, MAX_ATTACHMENT_BYTES,
+} from "@/lib/attachments";
+
+// 첨부파일 섹션. 여러 파일 업로드 + 목록/다운로드/삭제.
+// permitId 가 없으면(신규 임시저장 전) ensureId()로 먼저 draft 를 생성해 id 를 확보한다.
+export default function Attachments({
+  permitId, ensureId, uid, canUpload, value, onChange,
+}: {
+  permitId: string | null;
+  ensureId: () => Promise<string | null>;
+  uid: string;
+  canUpload: boolean;
+  value: PermitAttachment[];
+  onChange: (next: PermitAttachment[]) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || !files.length) return;
+    setMsg(""); setBusy(true);
+    try {
+      let id = permitId;
+      if (!id) id = await ensureId();
+      if (!id) { setMsg("업로드 전 임시저장이 필요합니다. 다시 시도해주세요."); return; }
+      const added: PermitAttachment[] = [];
+      const skipped: string[] = [];
+      for (const f of Array.from(files)) {
+        if (f.size > MAX_ATTACHMENT_BYTES) { skipped.push(`${f.name}(용량초과)`); continue; }
+        const meta = await uploadAttachment(id, f, uid);
+        added.push(meta);
+      }
+      if (added.length) onChange([...value, ...added]);
+      setMsg(
+        (added.length ? `${added.length}개 업로드 완료.` : "") +
+        (skipped.length ? ` 제외: ${skipped.join(", ")} (최대 25MB)` : "")
+      );
+    } catch (e) {
+      setMsg("업로드 실패: " + ((e as { message?: string })?.message || e));
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const handleRemove = async (att: PermitAttachment) => {
+    if (!permitId) return;
+    if (!window.confirm(`'${att.name}' 파일을 삭제할까요?`)) return;
+    setMsg(""); setBusy(true);
+    try {
+      await removeAttachment(permitId, att);
+      onChange(value.filter((a) => a.path !== att.path));
+    } catch (e) {
+      setMsg("삭제 실패: " + ((e as { message?: string })?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>
+        작업형태별로 필요한 서류(도면, 안전계획서, MSDS, 자격증 사본 등)를 첨부하세요. 여러 파일을 한 번에 올릴 수 있습니다. (파일당 최대 25MB)
+      </p>
+
+      {canUpload && (
+        <div>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            disabled={busy}
+            onChange={(e) => handleFiles(e.target.files)}
+            style={{ fontSize: 13 }}
+          />
+          {busy && <span style={{ marginLeft: 8, fontSize: 12, color: "#f59e0b" }}>업로드 중…</span>}
+        </div>
+      )}
+
+      {value.length > 0 ? (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+          {value.map((att) => (
+            <li
+              key={att.path}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 10px", background: "#f8fafc",
+              }}
+            >
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <a href={att.url} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "none" }}>
+                  📎 {att.name}
+                </a>
+                <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{formatBytes(att.size)}</span>
+              </span>
+              {canUpload && (
+                <button
+                  type="button"
+                  onClick={() => handleRemove(att)}
+                  disabled={busy}
+                  style={{
+                    border: "none", background: "transparent", color: "#ef4444",
+                    cursor: "pointer", fontSize: 13, padding: "2px 4px",
+                  }}
+                >
+                  삭제
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>첨부된 파일이 없습니다.</p>
+      )}
+
+      {msg && <p style={{ fontSize: 12, color: "#475569", margin: 0 }}>{msg}</p>}
+    </div>
+  );
+}

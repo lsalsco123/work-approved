@@ -22,6 +22,8 @@ import {
 import { auth, db } from "@/lib/firebase";
 import AccessGate from "@/components/AccessGate";
 import { listJsaRefs, getJsaRef } from "@/lib/jsaRefs";
+import Attachments from "@/components/Attachments";
+import { PermitAttachment } from "@/lib/attachments";
 
 const STATUS_LABEL: Record<PermitStatus, { text: string; color: string }> = {
   draft:     { text: "임시저장", color: "#94a3b8" },
@@ -130,6 +132,8 @@ function FillInner() {
   const [saveApprovalPreset, setSaveApprovalPreset] = useState(false);
   // 클라우드 허가서 로드 결과: null=정상, "notfound"=문서 없음/권한 없음, "error"=조회 실패
   const [loadError, setLoadError] = useState<null | "notfound" | "error">(null);
+  // 첨부파일 메타데이터 (permit 문서 top-level)
+  const [attachments, setAttachments] = useState<PermitAttachment[]>([]);
 
   useEffect(() => {
     if (!cloudId) return;
@@ -141,6 +145,7 @@ function FillInner() {
           setPermitStage(rec.stage ?? null);
           setChain(rec.chain ?? null);
           setAdminNote(rec.adminNote ?? "");
+          setAttachments(rec.attachments ?? []);
         } else {
           // 존재하지 않는 문서 → 빈 폼 대신 안내 표시 (권한 거부는 catch에서 처리)
           setLoadError("notfound");
@@ -838,6 +843,19 @@ function FillInner() {
             <CheckGroup options={WORK_TYPES.map((w) => ({ v: w.v, label: w.label }))} selected={data.workTypes} onToggle={(v) => toggleIn("workTypes", v)} cols={1} readOnly={isReadOnly} />
             {data.workTypes.includes("etc") && <Row label="기타 내용"><Text value={data.workTypeEtc} onChange={(v) => update("workTypeEtc", v)} readOnly={isReadOnly} /></Row>}
           </Section>
+
+          {!templateMode && (
+            <Section title="📎 첨부파일 (필요 서류)">
+              <Attachments
+                permitId={permitId}
+                ensureId={handleSave}
+                uid={user.uid}
+                canUpload={user.role === "admin" || (isGuest && !isReadOnly)}
+                value={attachments}
+                onChange={setAttachments}
+              />
+            </Section>
+          )}
 
           <Section title="작업장소 / 공정 (복수 선택)">
             <p className="muted">선택한 공정 위에 빨간 동그라미가 표시됩니다.</p>

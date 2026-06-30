@@ -5,6 +5,7 @@ import {
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "./firebase";
 import { PermitData } from "./types";
+import { PermitAttachment } from "./attachments";
 
 export type PermitStatus = "draft" | "submitted" | "approved" | "rejected" | "completed";
 export type ChainStage = "manager" | "safety" | "factory" | "done";
@@ -27,6 +28,7 @@ export interface PermitRecord {
   updatedAt: Timestamp;
   createdAt: Timestamp;
   data: PermitData;
+  attachments?: PermitAttachment[];
   adminNote?: string;
   approvedBy?: string;
 }
