@@ -31,6 +31,7 @@ const MANAGER_EMAILS: Record<string, string> = {
   "임종문": "jongmun.yim@alsco.co.kr",
   "김율구": "yulgu.kim@alsco.co.kr",
 };
+const PARK_SEHYUN_EMAIL = MANAGER_EMAILS["박세현"];
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   general: "일반작업", hot: "화기작업", confined: "밀폐공간작업",
@@ -298,7 +299,7 @@ export async function POST(req: NextRequest) {
     let headline: string;
     let intro: string;
     if (kind === "to_safety") {
-      recipients = [NOTIFY_TO];
+      recipients = [PARK_SEHYUN_EMAIL];
       subject = `[결재요청·환경안전] ${co} — ${wc}`;
       headline = "환경안전 결재 요청";
       intro = "담당자 1차 결재가 완료되었습니다. 환경안전 결재를 진행해 주세요.";
@@ -308,7 +309,17 @@ export async function POST(req: NextRequest) {
       headline = "공장장 최종 결재 요청";
       intro = "환경안전 결재가 완료되었습니다. 공장장 최종 결재를 진행해 주세요.";
     } else if (kind === "final") {
-      recipients = both;
+      if (!managerEmail) {
+        console.error(JSON.stringify({
+          level: "error",
+          message: "Final approval notification manager email not found",
+          route: "/api/notify",
+          permitId,
+          managerName,
+        }));
+        return NextResponse.json({ ok: false, error: "manager_email_not_found" }, { status: 422 });
+      }
+      recipients = Array.from(new Set([PARK_SEHYUN_EMAIL, managerEmail]));
       subject = `[최종 결재 완료] ${co} — ${wc}`;
       headline = "최종 결재 완료";
       intro = `${co}의 「${workContent || "작업"}」 건의 최종 결재가 완료되었습니다. 출력하여 업체에 전달해 주세요.`;
@@ -359,7 +370,7 @@ export async function POST(req: NextRequest) {
 
     const filename = `작업허가서_${(company || "업체").replace(/[/\\?%*:|"<>]/g, "_")}_${workDate || "날짜없음"}.html`;
 
-    await resend.emails.send({
+    const { data: sent, error: sendError } = await resend.emails.send({
       from: FROM,
       to: recipients,
       subject,
@@ -372,7 +383,30 @@ export async function POST(req: NextRequest) {
       } : {}),
     });
 
-    return NextResponse.json({ ok: true });
+    if (sendError) {
+      console.error(JSON.stringify({
+        level: "error",
+        message: "Resend email delivery request failed",
+        route: "/api/notify",
+        permitId,
+        kind,
+        recipientCount: recipients.length,
+        error: sendError.message,
+      }));
+      return NextResponse.json({ ok: false, error: "email_send_failed" }, { status: 502 });
+    }
+
+    console.log(JSON.stringify({
+      level: "info",
+      message: "Permit notification accepted by Resend",
+      route: "/api/notify",
+      permitId,
+      kind,
+      recipientCount: recipients.length,
+      emailId: sent?.id,
+    }));
+
+    return NextResponse.json({ ok: true, id: sent?.id });
   } catch (e) {
     console.error("notify error:", e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

@@ -454,11 +454,11 @@ function FillInner() {
   // 결재 처리 — 단계별 승인/반려/재상신 (서버 chainAction 이 권한·단계 검증)
   const backList = () => router.push(user?.role === "admin" ? "/admin" : "/manager");
   // 단계별 알림 메일 (비차단 — 실패해도 결재 흐름은 유지)
-  const postNotify = async (kind: string, reason = "") => {
-    if (!permitId) return;
+  const postNotify = async (kind: string, reason = ""): Promise<{ ok: boolean; error?: string }> => {
+    if (!permitId) return { ok: false, error: "permit_id_missing" };
     try {
       const token = await auth.currentUser?.getIdToken();
-      await fetch("/api/notify", {
+      const response = await fetch("/api/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
@@ -467,7 +467,18 @@ function FillInner() {
           startTime: data.startTime, endTime: data.endTime, supervisor: data.supervisor,
         }),
       });
-    } catch (e) { console.error("notify 실패:", e); }
+      const result = await response.json().catch(() => ({ ok: false, error: `http_${response.status}` }));
+      if (!response.ok || result.ok === false) {
+        const error = result.error || `http_${response.status}`;
+        console.error("notify 실패:", error);
+        return { ok: false, error };
+      }
+      return { ok: true };
+    } catch (e) {
+      const error = (e as Error)?.message ?? String(e);
+      console.error("notify 실패:", error);
+      return { ok: false, error };
+    }
   };
   const doApprove = async (signature: string) => {
     if (!permitId) return;
@@ -487,8 +498,16 @@ function FillInner() {
     try {
       const r = await chainAction(permitId, "approve", comment, reviewerName, signature);
       const kind = prevStage === "manager" ? "to_safety" : prevStage === "safety" ? "to_factory" : "final";
-      await postNotify(kind);
-      alert(r.status === "approved" ? "최종 승인되었습니다." : "승인하여 다음 단계로 넘겼습니다.");
+      const notifyResult = await postNotify(kind);
+      if (r.status === "approved") {
+        alert(notifyResult.ok
+          ? "최종 승인되었습니다.\n1차 담당자와 박세현에게 완료 메일을 발송했습니다."
+          : `최종 승인은 완료됐지만 메일 발송에 실패했습니다.\n오류: ${notifyResult.error || "unknown"}`);
+      } else {
+        alert(notifyResult.ok
+          ? "승인하여 다음 단계로 넘겼습니다."
+          : `승인은 완료됐지만 다음 단계 알림 메일 발송에 실패했습니다.\n오류: ${notifyResult.error || "unknown"}`);
+      }
       backList();
     } catch (e) { alert("처리 실패: " + ((e as Error)?.message ?? String(e))); }
     finally { setSaving(false); }
