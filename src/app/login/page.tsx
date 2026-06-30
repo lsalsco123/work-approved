@@ -29,6 +29,15 @@ export default function LoginPage() {
   const [info, setInfo] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [slide, setSlide] = useState(0);
+  const [rememberId, setRememberId] = useState(false);
+
+  // 저장된 아이디(이메일) 자동 입력 — 비밀번호는 저장하지 않음
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("ptw_login_id");
+      if (saved) { setId(saved); setRememberId(true); }
+    } catch { /* localStorage 사용 불가 환경 무시 */ }
+  }, []);
 
   const handleReset = async () => {
     setError(""); setInfo("");
@@ -52,6 +61,11 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setSubmitting(true);
+    // 아이디 저장 설정 반영 (체크 시 이메일 보관, 해제 시 삭제)
+    try {
+      if (rememberId) localStorage.setItem("ptw_login_id", id.trim());
+      else localStorage.removeItem("ptw_login_id");
+    } catch { /* 무시 */ }
     try {
       await login(id, password);
     } catch (err: unknown) {
@@ -112,6 +126,11 @@ export default function LoginPage() {
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,.8)", marginBottom: 5 }}>비밀번호</label>
             <input style={inputStyle} type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               required autoComplete="current-password" />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "0 0 14px" }}>
+            <input id="rememberId" type="checkbox" checked={rememberId} onChange={(e) => setRememberId(e.target.checked)}
+              style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#003377" }} />
+            <label htmlFor="rememberId" style={{ fontSize: 13, color: "rgba(255,255,255,.85)", cursor: "pointer", userSelect: "none" }}>아이디 저장</label>
           </div>
           {error && <p style={{ color: "#fca5a5", fontSize: 13, margin: "2px 0 10px", fontWeight: 500 }}>{error}</p>}
           {info && <p style={{ color: "#bbf7d0", fontSize: 13, margin: "2px 0 10px", fontWeight: 500 }}>{info}</p>}
