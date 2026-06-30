@@ -113,7 +113,7 @@ export default function SheetTable<T>({ columns, rows, rowKey, emptyText }: Prop
 
   return (
     <div className="sheet-wrap" ref={rootRef} tabIndex={0}>
-      <table className="sheet" style={{ width: widths.reduce((a, b) => a + b, 0) }}>
+      <table className="sheet" style={{ width: "100%", minWidth: widths.reduce((a, b) => a + b, 0) }}>
         <colgroup>{columns.map((c, i) => <col key={c.key} style={{ width: widths[i] }} />)}</colgroup>
         <thead>
           <tr>
