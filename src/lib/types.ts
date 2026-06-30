@@ -78,13 +78,13 @@ export interface PermitData {
   energyTarget: string;   // 차단대상
   energyLocation: string; // 차단위치
   energyPerson: string;   // 차단인
+  energyPersonSign: string; // 차단인 서명
   energyDeferred: boolean; // 발급 후 작성예정
 
   // ⑫ JSA (Work Sheet)
   worksheetAuthor: string;   // A97 작성자/담당자
   worksheetAuthorSign: string;
   riskParticipants: string;  // F97 위험성평가 참여자
-  riskParticipantsSign: string;
   jsa: JsaRow[];
 
   // 환경안전 교육실시 및 서약
@@ -123,8 +123,8 @@ export function emptyPermit(): PermitData {
     confined: [], confinedWatcher: "", confinedWatcherSign: "", electrical: [], electricalCutoffTime: "", electricalCutoffPerson: "", electricalCutoffPersonSign: "",
     elevated: [], excavation: [], excavationBuriedChecker: "", excavationBuriedCheckerSign: "",
     heavy: [], heavySignaler: "", heavySignalerSign: "", heavyEquipType: "", radiation: [],
-    energyMode: "", energyTarget: "", energyLocation: "", energyPerson: "", energyDeferred: false,
-    worksheetAuthor: "", worksheetAuthorSign: "", riskParticipants: "", riskParticipantsSign: "",
+    energyMode: "", energyTarget: "", energyLocation: "", energyPerson: "", energyPersonSign: "", energyDeferred: false,
+    worksheetAuthor: "", worksheetAuthorSign: "", riskParticipants: "",
     jsa: [],
     eduSigners: [], representativeSignName: "", representativeSign: "", representativeSignDate: "",
     privacyConsent: "",

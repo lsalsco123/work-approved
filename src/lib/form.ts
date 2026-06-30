@@ -252,7 +252,8 @@ export function buildOverlays(data: PermitData): Overlay[] {
   // J5(작업인원)/J7(비상연락망) cover 우측을 LS 로고(x≈0.42) 앞에서 끊어,
   // 흰 배경이 로고/우측 테두리를 침범하지 않게 한다. (인쇄된 "명(名)"은 여전히 덮음)
   if (data.workerCount) push(txt("J5", `${data.workerCount} 명( ${data.workerCount} 名)`, { cover: true, w: cell("J5").w * 0.9 }));
-  if (data.emergencyContact) push(txt("J7", data.emergencyContact, { cover: true, x: cell("J7").x + cell("J7").w * 0.1, w: cell("J7").w * 0.79 }));
+  const emergencyContact = data.emergencyContact === "010-0000-0000" ? "" : data.emergencyContact;
+  push(txt("J7", emergencyContact ? `☎ ${emergencyContact}` : "", { cover: true, w: cell("J7").w * 0.97 }));
   if (data.workDate) push(txt("C9", fmtWorkTime(data.workDate, data.startTime, data.endTime)));
   if (data.workContent) push(txt("C11", data.workContent, { wrap: true, valign: "middle" }));
 
@@ -318,20 +319,18 @@ export function buildOverlays(data: PermitData): Overlay[] {
   if (data.energyMode === "none") push(squareMark("Q31"));
   if (data.energyMode === "general") push(squareMark("U31"));
   if (data.energyMode === "general") {
-    if (data.energyDeferred) {
-      push(txt("Q33", "발급 후 작성예정", { x: cell("Q33").x, fontPt: 7 }));
-    } else {
-      if (data.energyTarget) push(txt("Q33", data.energyTarget, { fontPt: 6.5 }));
-      if (data.energyLocation) push(txt("V33", data.energyLocation, { fontPt: 6.5 }));
-      if (data.energyPerson) push(txt("AB33", data.energyPerson, { fontPt: 6.5 }));
+    if (!data.energyDeferred) {
+      if (data.energyTarget) push(txt("Q35", data.energyTarget, { align: "center", fontPt: 6.5 }));
+      if (data.energyLocation) push(txt("V35", data.energyLocation, { align: "center", fontPt: 6.5 }));
+      if (data.energyPerson) push(afterLabel("AB35", data.energyPerson, 0.04, 0.43, 6.5));
+      if (data.energyPersonSign) out.push(signBox("AB35", data.energyPersonSign, 0.48, 0.34, 0.10, 0.72));
     }
   }
 
   // ⑫ Work Sheet
-  if (data.worksheetAuthor) push(txt("A97", `작성자/담당자 :     ${data.worksheetAuthor}     (인)`, { cover: true, fontPt: 7 }));
-  if (data.worksheetAuthorSign) out.push(signBox("A97", data.worksheetAuthorSign, 0.72, 0.14, 0.10, 0.72));
-  if (data.riskParticipants) push(txt("F97", `위험성평가 참여자 : ${data.riskParticipants}     (인)`, { cover: true, fontPt: 7 }));
-  if (data.riskParticipantsSign) out.push(signBox("F97", data.riskParticipantsSign, 0.74, 0.14, 0.10, 0.72));
+  if (data.worksheetAuthor) push(afterLabel("A97", data.worksheetAuthor, 0.49, 0.22, 6.5));
+  if (data.worksheetAuthorSign) out.push(signBox("A97", data.worksheetAuthorSign, 0.70, 0.19, 0.12, 0.68));
+  if (data.riskParticipants) push(afterLabel("F97", data.riskParticipants, 0.36, 0.61, 6.5));
 
   data.jsa.slice(0, 6).forEach((r, i) => {
     const rw = JSA_ROWS[i];

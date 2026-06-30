@@ -46,8 +46,8 @@ type FieldSignatureKey =
   | "electricalCutoffPersonSign"
   | "excavationBuriedCheckerSign"
   | "heavySignalerSign"
+  | "energyPersonSign"
   | "worksheetAuthorSign"
-  | "riskParticipantsSign"
   | "representativeSign";
 
 const FIELD_SIGNATURE_LABELS: Record<FieldSignatureKey, string> = {
@@ -58,8 +58,8 @@ const FIELD_SIGNATURE_LABELS: Record<FieldSignatureKey, string> = {
   electricalCutoffPersonSign: "차단인 서명",
   excavationBuriedCheckerSign: "매설확인자 서명",
   heavySignalerSign: "신호수/유도자 서명",
+  energyPersonSign: "에너지원 차단인 서명",
   worksheetAuthorSign: "작성자/담당자 서명",
-  riskParticipantsSign: "위험성평가 참여자 서명",
   representativeSign: "신청/강사 서명",
 };
 
@@ -87,6 +87,16 @@ function todayYmd(): string {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function splitCutoffTime(value: string): [string, string] {
+  const [start = "", end = ""] = value.split("~", 2).map((part) => part.trim());
+  return [start, end];
+}
+
+function joinCutoffTime(start: string, end: string): string {
+  if (!start && !end) return "";
+  return `${start} ~ ${end}`;
 }
 
 function FillInner() {
@@ -254,7 +264,6 @@ function FillInner() {
     const checks: { label: string; name: string; sign: string }[] = [
       { label: "일반작업 작업감독자", name: data.supervisor, sign: data.supervisorSign },
       { label: "Work Sheet 작성자/담당자", name: data.worksheetAuthor, sign: data.worksheetAuthorSign },
-      { label: "Work Sheet 위험성평가 참여자", name: data.riskParticipants, sign: data.riskParticipantsSign },
       { label: "신청/강사", name: data.representativeSignName, sign: data.representativeSign },
     ];
     if (data.workTypes.includes("hot")) {
@@ -267,6 +276,9 @@ function FillInner() {
     if (data.workTypes.includes("electrical")) checks.push({ label: "차단인", name: data.electricalCutoffPerson, sign: data.electricalCutoffPersonSign });
     if (data.workTypes.includes("excavation")) checks.push({ label: "매설확인자", name: data.excavationBuriedChecker, sign: data.excavationBuriedCheckerSign });
     if (data.workTypes.includes("heavy")) checks.push({ label: "신호수/유도자", name: data.heavySignaler, sign: data.heavySignalerSign });
+    if (data.energyMode === "general" && !data.energyDeferred) {
+      checks.push({ label: "에너지원 차단인", name: data.energyPerson, sign: data.energyPersonSign || "" });
+    }
     return checks;
   };
 
@@ -311,6 +323,7 @@ function FillInner() {
       const submissionData = {
         ...data,
         company: user.company || data.company,
+        emergencyContact: data.emergencyContact === "010-0000-0000" ? "" : data.emergencyContact,
         applicantDate: data.applicantDate || todayYmd(),
       };
       const id = await savePermit(
@@ -406,6 +419,10 @@ function FillInner() {
         ...t.data,
         company: user?.company || data.company,
         applicantDept: user?.company || data.company,
+        emergencyContact: t.data.emergencyContact === "010-0000-0000" ? "" : t.data.emergencyContact,
+        riskParticipants: t.data.riskParticipants === "홍길동"
+          ? "홍길동, 김민수, 김철수, 김박수"
+          : t.data.riskParticipants,
         applicantDate: "",
         applicantSign: "",
         eduSigners: (t.data.eduSigners || []).map((signer) => ({ ...signer, sign: "" })),
@@ -573,6 +590,7 @@ function FillInner() {
   };
 
   const statusInfo = permitStatus ? STATUS_LABEL[permitStatus] : null;
+  const [electricalCutoffStart, electricalCutoffEnd] = splitCutoffTime(data.electricalCutoffTime);
 
   return (
     <div className="layout layout-split">
@@ -788,7 +806,7 @@ function FillInner() {
               </select>
             </Row>
             <Row label="작업인원"><Text value={data.workerCount} onChange={(v) => update("workerCount", v)} type="number" readOnly={isReadOnly} /></Row>
-            <Row label="비상연락망"><Text value={data.emergencyContact} onChange={(v) => update("emergencyContact", v)} placeholder="010-0000-0000" readOnly={isReadOnly} /></Row>
+            <Row label="비상연락망"><Text value={data.emergencyContact === "010-0000-0000" ? "" : data.emergencyContact} onChange={(v) => update("emergencyContact", v)} readOnly={isReadOnly} /></Row>
             <Row label="작업일자" required hint="당일만 · 여러 날은 날짜만 바꿔 재발급"><Text value={data.workDate} onChange={(v) => update("workDate", v)} type="date" readOnly={isReadOnly} /></Row>
             <div className="tworow">
               <Row label="시작시간"><Text value={data.startTime} onChange={(v) => update("startTime", v)} type="time" readOnly={isReadOnly} /></Row>
@@ -859,7 +877,23 @@ function FillInner() {
             <Section title="⑤ 전기차단(정전)작업">
               <CheckGroup options={ELECTRICAL} selected={data.electrical} onToggle={(v) => toggleIn("electrical", v)} cols={1} readOnly={isReadOnly} />
               <div className="tworow">
-                <Row label="차단시간"><Text value={data.electricalCutoffTime} onChange={(v) => update("electricalCutoffTime", v)} readOnly={isReadOnly} /></Row>
+                <Row label="차단시간">
+                  <span style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+                    <Text
+                      value={electricalCutoffStart}
+                      onChange={(v) => update("electricalCutoffTime", joinCutoffTime(v, electricalCutoffEnd))}
+                      type="time"
+                      readOnly={isReadOnly}
+                    />
+                    <span aria-hidden="true">~</span>
+                    <Text
+                      value={electricalCutoffEnd}
+                      onChange={(v) => update("electricalCutoffTime", joinCutoffTime(electricalCutoffStart, v))}
+                      type="time"
+                      readOnly={isReadOnly}
+                    />
+                  </span>
+                </Row>
                 <Row label="차단인"><Text value={data.electricalCutoffPerson} onChange={(v) => update("electricalCutoffPerson", v)} readOnly={isReadOnly} /></Row>
               </div>
               <Row label="차단인 서명" required>
@@ -921,6 +955,9 @@ function FillInner() {
                     <Row label="에너지 차단 대상"><Text value={data.energyTarget} onChange={(v) => update("energyTarget", v)} readOnly={isReadOnly} /></Row>
                     <Row label="차단 위치"><Text value={data.energyLocation} onChange={(v) => update("energyLocation", v)} readOnly={isReadOnly} /></Row>
                     <Row label="차단인"><Text value={data.energyPerson} onChange={(v) => update("energyPerson", v)} readOnly={isReadOnly} /></Row>
+                    <Row label="차단인 서명" required>
+                      <SignatureField value={data.energyPersonSign || ""} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "energyPersonSign" })} />
+                    </Row>
                   </>
                 )}
               </>
@@ -932,14 +969,9 @@ function FillInner() {
               <Row label="작성자/담당자"><Text value={data.worksheetAuthor} onChange={(v) => update("worksheetAuthor", v)} readOnly={isReadOnly} /></Row>
               <Row label="위험성평가 참여자"><Text value={data.riskParticipants} onChange={(v) => update("riskParticipants", v)} readOnly={isReadOnly} /></Row>
             </div>
-            <div className="tworow">
-              <Row label="작성자/담당자 서명" required>
-                <SignatureField value={data.worksheetAuthorSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "worksheetAuthorSign" })} />
-              </Row>
-              <Row label="위험성평가 참여자 서명" required>
-                <SignatureField value={data.riskParticipantsSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "riskParticipantsSign" })} />
-              </Row>
-            </div>
+            <Row label="작성자/담당자 서명" required>
+              <SignatureField value={data.worksheetAuthorSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "worksheetAuthorSign" })} />
+            </Row>
             {!isReadOnly && data.workTypes.filter((wt) => jsaRefTypes.includes(wt)).length > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
                 <span style={{ fontSize: 12, color: "#64748b" }}>레퍼런스 불러오기:</span>

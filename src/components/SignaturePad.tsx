@@ -85,7 +85,32 @@ export default function SignaturePad({
 
   const save = () => {
     if (!hasInk) { alert("서명을 입력해주세요."); return; }
-    onSave(canvasRef.current!.toDataURL("image/png"));
+    const source = canvasRef.current!;
+    const ctx = source.getContext("2d")!;
+    const pixels = ctx.getImageData(0, 0, W, H).data;
+    let left = W, top = H, right = -1, bottom = -1;
+
+    for (let y = 0; y < H; y += 1) {
+      for (let x = 0; x < W; x += 1) {
+        if (pixels[(y * W + x) * 4 + 3] === 0) continue;
+        left = Math.min(left, x);
+        right = Math.max(right, x);
+        top = Math.min(top, y);
+        bottom = Math.max(bottom, y);
+      }
+    }
+
+    if (right < left || bottom < top) { alert("서명을 입력해주세요."); return; }
+    const padding = 8;
+    const cropX = Math.max(0, left - padding);
+    const cropY = Math.max(0, top - padding);
+    const cropW = Math.min(W, right + padding + 1) - cropX;
+    const cropH = Math.min(H, bottom + padding + 1) - cropY;
+    const cropped = document.createElement("canvas");
+    cropped.width = cropW;
+    cropped.height = cropH;
+    cropped.getContext("2d")!.drawImage(source, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+    onSave(cropped.toDataURL("image/png"));
   };
 
   return (

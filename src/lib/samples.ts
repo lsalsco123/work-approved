@@ -10,7 +10,7 @@ export function sampleGeneral(): PermitData {
     representative: "홍길동",
     supervisor: "홍길동",
     workerCount: "2",
-    emergencyContact: "010-0000-0000",
+    emergencyContact: "",
     workContent: "설비 점검·정비 작업",
     workTypes: ["general"],
     gear: ["안전모", "안전화"],
@@ -22,7 +22,7 @@ export function sampleGeneral(): PermitData {
     ],
     energyMode: "none",
     worksheetAuthor: "홍길동",
-    riskParticipants: "홍길동",
+    riskParticipants: "홍길동, 김민수, 김철수, 김박수",
     jsa: [
       {
         step: "일반작업",
