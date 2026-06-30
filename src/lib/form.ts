@@ -253,7 +253,15 @@ export function buildOverlays(data: PermitData): Overlay[] {
   // 흰 배경이 로고/우측 테두리를 침범하지 않게 한다. (인쇄된 "명(名)"은 여전히 덮음)
   if (data.workerCount) push(txt("J5", `${data.workerCount} 명( ${data.workerCount} 名)`, { cover: true, w: cell("J5").w * 0.9 }));
   const emergencyContact = data.emergencyContact === "010-0000-0000" ? "" : data.emergencyContact;
-  push(txt("J7", emergencyContact ? `☎ ${emergencyContact}` : "", { cover: true, w: cell("J7").w * 0.97 }));
+  // 배경 이미지의 실제 입력 셀은 x=753~945px (2338px 기준)이다.
+  // coords.json J7은 한 칸 오른쪽으로 밀려 있어 고정 전화번호를 완전히 덮지 못한다.
+  push(txt("J7", emergencyContact, {
+    cover: true,
+    x: 753 / 2338,
+    w: (945 - 753) / 2338,
+    align: "center",
+    fontPt: 7,
+  }));
   if (data.workDate) push(txt("C9", fmtWorkTime(data.workDate, data.startTime, data.endTime)));
   if (data.workContent) push(txt("C11", data.workContent, { wrap: true, valign: "middle" }));
 
@@ -361,21 +369,41 @@ export function buildOverlays(data: PermitData): Overlay[] {
   const EDU_COLS = ["Q", "V", "AA"];       // 성명 칸
   const EDU_SIGN_COLS = ["S", "X", "AC"];  // 서명 칸 (넓은 칸)
   const EDU_ROWS = [138, 140, 142, 144, 146, 148];
+  // asset_page2.png(2338px)의 실제 세 성명/서명 칸 경계.
+  // coords.json은 뒤 열로 갈수록 우측 오차가 누적되므로 실제 픽셀 경계를 사용한다.
+  const EDU_NAME_AREAS = [
+    { x: 0.513259, w: 0.055175 },
+    { x: 0.650556, w: 0.054748 },
+    { x: 0.787425, w: 0.054748 },
+  ];
+  const EDU_SIGN_AREAS = [
+    { x: 0.568435, w: 0.082121 },
+    { x: 0.705304, w: 0.082121 },
+    { x: 0.842173, w: 0.081694 },
+  ];
   data.eduSigners.slice(0, 18).forEach((s, i) => {
     const col = i % 3, rw = EDU_ROWS[Math.floor(i / 3)];
     if (s.name) {
       const nc = cell(`${EDU_COLS[col]}${rw}`);
-      push(boxText({ ...nc, x: nc.x + nc.w * 0.03, y: nc.y + nc.h * 0.10, w: nc.w * 0.90, h: nc.h * 0.78 }, s.name,
+      const area = EDU_NAME_AREAS[col];
+      push(boxText({
+        ...nc,
+        x: area.x + area.w * 0.06,
+        y: nc.y + nc.h * 0.10,
+        w: area.w * 0.88,
+        h: nc.h * 0.78,
+      }, s.name,
         { align: "center", valign: "middle", fontPt: 6.2, wrap: false }));
     }
-    // 병합된 실제 서명 칸의 좌측 62%만 사용해 우측 "(인)"과 겹치지 않게 하고, 세로도 한 줄 내려 맞춘다.
+    // 실제 서명 칸의 좌측 영역만 사용해 우측 "(인)"과 겹치지 않게 한다.
     if (s.sign) {
       const sc = cell(`${EDU_SIGN_COLS[col]}${rw}`);
+      const area = EDU_SIGN_AREAS[col];
       out.push(imgFit({
         ...sc,
-        x: sc.x + sc.w * 0.05,
+        x: area.x + area.w * 0.03,
         y: sc.y + sc.h * 0.12,
-        w: sc.w * 0.62,
+        w: area.w * 0.72,
         h: sc.h * 0.68,
       }, s.sign));
     }
