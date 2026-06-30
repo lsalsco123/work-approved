@@ -7,7 +7,7 @@ import {
 // 첨부파일 섹션. 여러 파일 업로드 + 목록/다운로드/삭제.
 // permitId 가 없으면(신규 임시저장 전) ensureId()로 먼저 draft 를 생성해 id 를 확보한다.
 export default function Attachments({
-  permitId, ensureId, uid, canUpload, value, onChange,
+  permitId, ensureId, uid, canUpload, value, onChange, requiredDocs = [],
 }: {
   permitId: string | null;
   ensureId: () => Promise<string | null>;
@@ -15,6 +15,7 @@ export default function Attachments({
   canUpload: boolean;
   value: PermitAttachment[];
   onChange: (next: PermitAttachment[]) => void;
+  requiredDocs?: string[];
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -63,9 +64,11 @@ export default function Attachments({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>
-        작업형태별로 필요한 서류(도면, 안전계획서, MSDS, 자격증 사본 등)를 첨부하세요. 여러 파일을 한 번에 올릴 수 있습니다. (파일당 최대 25MB)
-      </p>
+      {requiredDocs.length > 0 && (
+        <p style={{ fontSize: 13, color: "#334155", margin: 0 }}>
+          <b>필요 서류:</b> {requiredDocs.join(", ")}
+        </p>
+      )}
 
       {canUpload && (
         <div>

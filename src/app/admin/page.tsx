@@ -10,6 +10,7 @@ import { listCompanyAccounts, adminApprove, adminDeleteAccount, adminSetPassword
 import { MANAGERS } from "@/lib/managers";
 import { DEFAULT_TEMPLATES } from "@/lib/samples";
 import { listJsaRefs, getJsaRef, saveJsaRef, deleteJsaRef } from "@/lib/jsaRefs";
+import { getRequiredDocs, setRequiredDocs } from "@/lib/appConfig";
 import { WORK_TYPES } from "@/lib/form";
 import { JsaRow } from "@/lib/types";
 import JsaEditor from "@/components/JsaEditor";
@@ -195,6 +196,21 @@ export default function AdminPage() {
     finally { setRefBusy(false); }
   };
   const refWTLabel = (wt: string) => WORK_TYPES.find((w) => w.v === wt)?.label.split(" (")[0] ?? wt;
+
+  // 첨부 필요 서류 안내 (업체 작성 화면 첨부 섹션에 노출)
+  const [reqDocsText, setReqDocsText] = useState("");
+  const [reqDocsBusy, setReqDocsBusy] = useState(false);
+  useEffect(() => {
+    if (user?.role === "admin") getRequiredDocs().then((items) => setReqDocsText(items.join("\n"))).catch(() => {});
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  const saveReqDocs = async () => {
+    if (!user) return;
+    const items = reqDocsText.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+    setReqDocsBusy(true);
+    try { await setRequiredDocs(items, user.email); setReqDocsText(items.join("\n")); alert("필요 서류 안내를 저장했습니다."); }
+    catch (e) { alert("저장 실패: " + ((e as Error)?.message ?? String(e))); }
+    finally { setReqDocsBusy(false); }
+  };
 
   const count = (s: PermitStatus) => permits.filter((p) => p.status === s).length;
 
@@ -403,6 +419,22 @@ export default function AdminPage() {
             ) : (
               <p className="sheet-hint" style={{ marginTop: 8 }}>위 표에서 작업형태의 “편집”을 누르면 해당 JSA 레퍼런스를 작성/수정할 수 있습니다.</p>
             )}
+          </div>
+
+          <div className="panel" style={{ marginBottom: 0 }}>
+            <div className="panel-head">
+              <span className="panel-title" style={{ color: "#b45309" }}>첨부 필요 서류 안내</span>
+              <span className="panel-sub">업체 작성 화면의 첨부 섹션에 “필요 서류”로 안내됩니다. 한 줄에 하나씩(또는 쉼표로 구분).</span>
+              <div className="grow" />
+              <button className="mini btn-accent" disabled={reqDocsBusy} onClick={saveReqDocs}>{reqDocsBusy ? "저장 중…" : "저장"}</button>
+            </div>
+            <textarea
+              className="inp"
+              style={{ width: "100%", minHeight: 130, resize: "vertical", fontFamily: "inherit", lineHeight: 1.6 }}
+              placeholder={"예)\n작업계획서\nMSDS(물질안전보건자료)\n보험증권 사본\n자격증 사본"}
+              value={reqDocsText}
+              onChange={(e) => setReqDocsText(e.target.value)}
+            />
           </div>
         </div>
 

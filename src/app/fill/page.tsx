@@ -24,6 +24,7 @@ import AccessGate from "@/components/AccessGate";
 import { listJsaRefs, getJsaRef } from "@/lib/jsaRefs";
 import Attachments from "@/components/Attachments";
 import { PermitAttachment } from "@/lib/attachments";
+import { getRequiredDocs } from "@/lib/appConfig";
 
 const STATUS_LABEL: Record<PermitStatus, { text: string; color: string }> = {
   draft:     { text: "임시저장", color: "#94a3b8" },
@@ -134,6 +135,8 @@ function FillInner() {
   const [loadError, setLoadError] = useState<null | "notfound" | "error">(null);
   // 첨부파일 메타데이터 (permit 문서 top-level)
   const [attachments, setAttachments] = useState<PermitAttachment[]>([]);
+  // 관리자가 설정한 "필요 서류" 안내 목록
+  const [requiredDocs, setRequiredDocs] = useState<string[]>([]);
 
   useEffect(() => {
     if (!cloudId) return;
@@ -159,6 +162,11 @@ function FillInner() {
         setCloudLoaded(true);
       });
   }, [cloudId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 관리자 설정 "필요 서류" 안내 로드 (작성 화면 첨부 섹션에 표시)
+  useEffect(() => {
+    getRequiredDocs().then(setRequiredDocs).catch(() => { /* 설정 없음 → 빈 목록 */ });
+  }, []);
 
   // 예시 양식 편집 모드: 기존 템플릿 로드
   useEffect(() => {
@@ -853,6 +861,7 @@ function FillInner() {
                 canUpload={user.role === "admin" || (isGuest && !isReadOnly)}
                 value={attachments}
                 onChange={setAttachments}
+                requiredDocs={requiredDocs}
               />
             </Section>
           )}

@@ -89,5 +89,11 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if isAdmin();
     }
+
+    // 앱 운영 설정 (첨부 필요 서류 안내 등) — 로그인 사용자 읽기, 관리자만 쓰기
+    match /appConfig/{id} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
   }
 }
