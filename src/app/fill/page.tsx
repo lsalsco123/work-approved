@@ -23,7 +23,7 @@ import { auth, db } from "@/lib/firebase";
 import AccessGate from "@/components/AccessGate";
 import Attachments from "@/components/Attachments";
 import { PermitAttachment } from "@/lib/attachments";
-import { getRequiredDocs } from "@/lib/appConfig";
+import { getAttachConfigs, AttachConfigMap } from "@/lib/appConfig";
 
 const STATUS_LABEL: Record<PermitStatus, { text: string; color: string }> = {
   draft:     { text: "임시저장", color: "#94a3b8" },
@@ -134,8 +134,8 @@ function FillInner() {
   const [loadError, setLoadError] = useState<null | "notfound" | "error">(null);
   // 첨부파일 메타데이터 (permit 문서 top-level)
   const [attachments, setAttachments] = useState<PermitAttachment[]>([]);
-  // 관리자가 설정한 "필요 서류" 안내 목록
-  const [requiredDocs, setRequiredDocs] = useState<string[]>([]);
+  // 관리자가 설정한 작업형태별 첨부 설정(안내 목록 + 업로드 표시 여부)
+  const [attachCfgs, setAttachCfgs] = useState<AttachConfigMap>({});
 
   useEffect(() => {
     if (!cloudId) return;
@@ -162,9 +162,9 @@ function FillInner() {
       });
   }, [cloudId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 관리자 설정 "필요 서류" 안내 로드 (작성 화면 첨부 섹션에 표시)
+  // 관리자 설정 작업형태별 첨부 설정 로드 (작성 화면 첨부 섹션에 반영)
   useEffect(() => {
-    getRequiredDocs().then(setRequiredDocs).catch(() => { /* 설정 없음 → 빈 목록 */ });
+    getAttachConfigs().then(setAttachCfgs).catch(() => { /* 설정 없음 → 기본값 */ });
   }, []);
 
   // 예시 양식 편집 모드: 기존 템플릿 로드
@@ -853,19 +853,31 @@ function FillInner() {
             {data.workTypes.includes("etc") && <Row label="기타 내용"><Text value={data.workTypeEtc} onChange={(v) => update("workTypeEtc", v)} readOnly={isReadOnly} /></Row>}
           </Section>
 
-          {!templateMode && (
-            <Section title="📎 첨부파일 (필요 서류)">
-              <Attachments
-                permitId={permitId}
-                ensureId={handleSave}
-                uid={user.uid}
-                canUpload={user.role === "admin" || (isGuest && !isReadOnly)}
-                value={attachments}
-                onChange={setAttachments}
-                requiredDocs={requiredDocs}
-              />
-            </Section>
-          )}
+          {!templateMode && (() => {
+            // 선택한 작업형태들의 첨부 설정을 취합 (업로드 표시 여부 + 안내문)
+            const rel = data.workTypes.filter((wt) => wt !== "etc");
+            const uploadVisible = rel.length === 0 ? true : rel.some((wt) => attachCfgs[wt]?.upload !== false);
+            const docLines = rel
+              .map((wt) => ({ label: WORK_TYPES.find((w) => w.v === wt)?.label.split(" (")[0] ?? wt, items: attachCfgs[wt]?.items ?? [] }))
+              .filter((x) => x.items.length > 0)
+              .map((x) => `${x.label}: ${x.items.join(", ")}`);
+            // 업로드 숨김이고 기존 첨부도 없으면 섹션 자체를 표시하지 않음
+            if (!uploadVisible && attachments.length === 0) return null;
+            return (
+              <Section title="📎 첨부파일">
+                <Attachments
+                  permitId={permitId}
+                  ensureId={handleSave}
+                  uid={user.uid}
+                  canUpload={user.role === "admin" || (isGuest && !isReadOnly)}
+                  value={attachments}
+                  onChange={setAttachments}
+                  requiredDocs={docLines}
+                  uploadEnabled={uploadVisible}
+                />
+              </Section>
+            );
+          })()}
 
           <Section title="작업장소 / 공정 (복수 선택)" id="sec-process">
             <p className="muted">선택한 공정 위에 빨간 동그라미가 표시됩니다.</p>

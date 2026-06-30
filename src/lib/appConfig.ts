@@ -1,23 +1,39 @@
 "use client";
-// 앱 운영 설정 — 관리자가 작성 화면에 노출할 "첨부 필요 서류" 안내 목록 등.
+// 앱 운영 설정 — 작업형태별 "첨부 필요 서류 안내" + 업로드 칸 표시 여부.
+// 단일 문서 appConfig/attachments 의 byType 맵에 작업형태별 설정을 저장한다.
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
 
-const ATTACH_DOC = ["appConfig", "attachments"] as const;
+export interface AttachTypeConfig {
+  items: string[];   // 필요 서류 안내 목록
+  upload: boolean;   // 첨부 업로드 칸 표시 여부
+}
+export type AttachConfigMap = Record<string, AttachTypeConfig>;
 
-// 업체 작성 화면 첨부 섹션에 안내할 "필요 서류" 목록을 읽는다. (로그인 사용자 모두 읽기 가능)
-export async function getRequiredDocs(): Promise<string[]> {
-  const snap = await getDoc(doc(db, ATTACH_DOC[0], ATTACH_DOC[1]));
-  if (!snap.exists()) return [];
-  const items = (snap.data() as { items?: unknown }).items;
-  return Array.isArray(items) ? items.filter((x): x is string => typeof x === "string") : [];
+const COL = "appConfig";
+const ID = "attachments";
+
+// 작업형태별 첨부 설정 전체를 읽는다. (로그인 사용자 모두)
+export async function getAttachConfigs(): Promise<AttachConfigMap> {
+  const snap = await getDoc(doc(db, COL, ID));
+  if (!snap.exists()) return {};
+  const byType = (snap.data() as { byType?: unknown }).byType;
+  if (!byType || typeof byType !== "object") return {};
+  const out: AttachConfigMap = {};
+  for (const [k, v] of Object.entries(byType as Record<string, { items?: unknown; upload?: unknown }>)) {
+    const items = Array.isArray(v?.items) ? v.items.filter((x): x is string => typeof x === "string") : [];
+    const upload = v?.upload !== false; // 미설정 시 기본 표시
+    out[k] = { items, upload };
+  }
+  return out;
 }
 
-// 필요 서류 목록 저장 (관리자 전용 — rules 가 admin 쓰기를 강제).
-export async function setRequiredDocs(items: string[], email: string): Promise<void> {
+// 특정 작업형태 첨부 설정 저장 (관리자 전용 — rules 가 admin 쓰기를 강제).
+// merge:true 로 다른 작업형태 설정은 보존된다.
+export async function setAttachConfig(workType: string, cfg: AttachTypeConfig, email: string): Promise<void> {
   await setDoc(
-    doc(db, ATTACH_DOC[0], ATTACH_DOC[1]),
-    { items, updatedAt: serverTimestamp(), updatedBy: email },
+    doc(db, COL, ID),
+    { byType: { [workType]: { items: cfg.items, upload: cfg.upload } }, updatedAt: serverTimestamp(), updatedBy: email },
     { merge: true },
   );
 }

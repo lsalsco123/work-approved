@@ -9,7 +9,7 @@ import { listTemplates, deleteTemplate, createTemplate, PermitTemplate } from "@
 import { listCompanyAccounts, adminApprove, adminDeleteAccount, adminSetPassword, adminSetRole, sendResetEmail, CompanyAccount } from "@/lib/accounts";
 import { MANAGERS } from "@/lib/managers";
 import { DEFAULT_TEMPLATES } from "@/lib/samples";
-import { getRequiredDocs, setRequiredDocs } from "@/lib/appConfig";
+import { getAttachConfigs, setAttachConfig, AttachConfigMap } from "@/lib/appConfig";
 import { WORK_TYPES } from "@/lib/form";
 import SheetTable, { SheetColumn } from "@/components/SheetTable";
 
@@ -162,19 +162,31 @@ export default function AdminPage() {
   const pending = accounts.filter((a) => a.status === "pending");
   const others = accounts.filter((a) => a.status !== "pending");
 
-  // 첨부 필요 서류 안내 (업체 작성 화면 첨부 섹션에 노출)
-  const [reqDocsText, setReqDocsText] = useState("");
-  const [reqDocsBusy, setReqDocsBusy] = useState(false);
-  useEffect(() => {
-    if (user?.role === "admin") getRequiredDocs().then((items) => setReqDocsText(items.join("\n"))).catch(() => {});
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
-  const saveReqDocs = async () => {
-    if (!user) return;
-    const items = reqDocsText.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
-    setReqDocsBusy(true);
-    try { await setRequiredDocs(items, user.email); setReqDocsText(items.join("\n")); alert("필요 서류 안내를 저장했습니다."); }
+  // 작업형태별 첨부 설정(필요 서류 안내 + 업로드 칸 표시) — 예시 양식 관리에 통합
+  const wtLabel = (wt: string) => WORK_TYPES.find((w) => w.v === wt)?.label.split(" (")[0] ?? wt;
+  const [attachCfgs, setAttachCfgs] = useState<AttachConfigMap>({});
+  const [attachWT, setAttachWT] = useState("");        // 편집 중인 작업형태
+  const [attachText, setAttachText] = useState("");
+  const [attachUpload, setAttachUpload] = useState(true);
+  const [attachBusy, setAttachBusy] = useState(false);
+  const fetchAttachCfgs = async () => {
+    try { setAttachCfgs(await getAttachConfigs()); }
+    catch (e) { console.error("첨부 설정 조회 실패:", e); }
+  };
+  useEffect(() => { if (user?.role === "admin") fetchAttachCfgs(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  const selectAttachWT = (wt: string) => {
+    setAttachWT(wt);
+    const c = attachCfgs[wt];
+    setAttachText((c?.items ?? []).join("\n"));
+    setAttachUpload(c?.upload !== false);
+  };
+  const saveAttach = async () => {
+    if (!attachWT || !user) return;
+    const items = attachText.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+    setAttachBusy(true);
+    try { await setAttachConfig(attachWT, { items, upload: attachUpload }, user.email); await fetchAttachCfgs(); alert(`${wtLabel(attachWT)} 첨부 설정을 저장했습니다.`); }
     catch (e) { alert("저장 실패: " + ((e as Error)?.message ?? String(e))); }
-    finally { setReqDocsBusy(false); }
+    finally { setAttachBusy(false); }
   };
 
   const count = (s: PermitStatus) => permits.filter((p) => p.status === s).length;
@@ -252,7 +264,7 @@ export default function AdminPage() {
       render: (w) => <span className={`chip ${tplByType(w.v) ? "chip-approved" : "chip-draft"}`}>{tplByType(w.v) ? "등록됨" : "미등록"}</span>,
     },
     {
-      key: "act", header: "처리", width: 170, noSelect: true, wrap: true, copyText: () => "",
+      key: "act", header: "예시 양식", width: 170, noSelect: true, wrap: true, copyText: () => "",
       render: (w) => {
         const t = tplByType(w.v);
         return (
@@ -261,6 +273,22 @@ export default function AdminPage() {
               ? <button className="mini" disabled={tplBusy} onClick={() => router.push(`/fill?template=${t.id}`)}>수정</button>
               : <button className="mini btn-accent" disabled={tplBusy} onClick={() => router.push(`/fill?templateNew=1&wt=${w.v}`)}>작성</button>}
             {t && <button className="mini danger" disabled={tplBusy} onClick={() => removeTemplate(t)}>삭제</button>}
+          </div>
+        );
+      },
+    },
+    {
+      key: "attach", header: "첨부 안내", width: 200, noSelect: true, wrap: true,
+      copyText: (w) => `${attachCfgs[w.v]?.upload !== false ? "업로드표시" : "업로드숨김"} / 안내 ${attachCfgs[w.v]?.items?.length ?? 0}줄`,
+      render: (w) => {
+        const c = attachCfgs[w.v];
+        const on = c?.upload !== false;
+        const n = c?.items?.length ?? 0;
+        return (
+          <div className="cellbtns" style={{ alignItems: "center" }}>
+            <span className={`chip ${on ? "chip-approved" : "chip-draft"}`}>{on ? "업로드 표시" : "업로드 숨김"}</span>
+            {n > 0 && <span style={{ fontSize: 11, color: "#64748b" }}>안내 {n}줄</span>}
+            <button className={`mini ${attachWT === w.v ? "btn-accent" : ""}`} disabled={attachBusy} onClick={() => selectAttachWT(w.v)}>{attachWT === w.v ? "편집 중" : "설정"}</button>
           </div>
         );
       },
@@ -348,31 +376,37 @@ export default function AdminPage() {
           )}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 16, marginBottom: 16, alignItems: "start" }}>
+        <div style={{ marginBottom: 16 }}>
           <div className="panel" style={{ marginBottom: 0 }}>
             <div className="panel-head">
               <span className="panel-title" style={{ color: "#6d28d9" }}>예시 양식 관리</span>
-              <span className="panel-sub">작업형태별로 예시 양식을 등록하면 업체가 작성 화면에서 불러옵니다. “작성”으로 등록, “수정”으로 편집합니다.</span>
+              <span className="panel-sub">작업형태별로 예시 양식(작성/수정)과 첨부 안내(필요 서류·업로드 칸 표시)를 설정합니다. 업체는 선택한 작업형태에 따라 안내를 보게 됩니다.</span>
               <div className="grow" />
               <button className="mini" disabled={tplBusy} onClick={seedDefaults}>{tplBusy ? "생성 중…" : "기본 예시 일괄 생성"}</button>
             </div>
             <SheetTable columns={tplCols} rows={tplTypeRows} rowKey={(w) => w.v} />
-          </div>
-
-          <div className="panel" style={{ marginBottom: 0 }}>
-            <div className="panel-head">
-              <span className="panel-title" style={{ color: "#b45309" }}>첨부 필요 서류 안내</span>
-              <span className="panel-sub">업체 작성 화면의 첨부 섹션에 “필요 서류”로 안내됩니다. 한 줄에 하나씩(또는 쉼표로 구분).</span>
-              <div className="grow" />
-              <button className="mini btn-accent" disabled={reqDocsBusy} onClick={saveReqDocs}>{reqDocsBusy ? "저장 중…" : "저장"}</button>
-            </div>
-            <textarea
-              className="inp"
-              style={{ width: "100%", minHeight: 130, resize: "vertical", fontFamily: "inherit", lineHeight: 1.6 }}
-              placeholder={"예)\n작업계획서\nMSDS(물질안전보건자료)\n보험증권 사본\n자격증 사본"}
-              value={reqDocsText}
-              onChange={(e) => setReqDocsText(e.target.value)}
-            />
+            {attachWT && (
+              <div style={{ marginTop: 12, padding: 12, border: "1px solid #e2e8f0", borderRadius: 8, background: "#fbfcfe" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+                  <b style={{ fontSize: 13 }}>{wtLabel(attachWT)} — 첨부 안내 설정</b>
+                  <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                    <input type="checkbox" checked={attachUpload} onChange={(e) => setAttachUpload(e.target.checked)} />
+                    첨부 업로드 칸 표시
+                  </label>
+                  <div className="grow" />
+                  <button className="mini btn-accent" disabled={attachBusy} onClick={saveAttach}>{attachBusy ? "저장 중…" : "저장"}</button>
+                  <button className="mini" disabled={attachBusy} onClick={() => setAttachWT("")}>닫기</button>
+                </div>
+                <textarea
+                  className="inp"
+                  style={{ width: "100%", minHeight: 110, resize: "vertical", fontFamily: "inherit", lineHeight: 1.6 }}
+                  placeholder={"필요 서류를 한 줄에 하나씩 (또는 쉼표로 구분)\n예)\n작업계획서\nMSDS(물질안전보건자료)\n보험증권 사본"}
+                  value={attachText}
+                  onChange={(e) => setAttachText(e.target.value)}
+                />
+                <p className="sheet-hint" style={{ marginTop: 6 }}>“업로드 칸 표시”를 끄면 해당 작업형태에서는 업체에게 첨부 업로드 칸이 보이지 않습니다.</p>
+              </div>
+            )}
           </div>
         </div>
 
