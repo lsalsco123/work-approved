@@ -163,10 +163,6 @@ export default function LoginPage() {
           }} />
         ))}
       </div>
-
-      <div style={{ position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)", zIndex: 2, color: "rgba(255,255,255,.5)", fontSize: 11, letterSpacing: ".4px", whiteSpace: "nowrap" }}>
-        build by 김승정
-      </div>
     </div>
   );
 }
