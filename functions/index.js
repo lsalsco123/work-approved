@@ -224,6 +224,12 @@ exports.chainAction = onCall(async (request) => {
       upd["data.admin.review.dept"] = "환경안전";
       upd["data.admin.review.date"] = today;
       upd["data.admin.review.sign"] = signature;
+      // 화기작업: 소방안전관리자 서명은 업체가 아닌 환경안전(박세현) 검토 단계에서 기재한다.
+      const wts = (permit.data && permit.data.workTypes) || [];
+      if (Array.isArray(wts) && wts.includes("hot")) {
+        upd["data.hotFireManager"] = reviewerName || "박세현";
+        upd["data.hotFireManagerSign"] = signature;
+      }
       upd.stage = "factory";
     } else if (stage === "factory") {
       const approverName = callerName || "이태훈";

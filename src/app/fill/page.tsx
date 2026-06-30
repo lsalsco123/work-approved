@@ -274,50 +274,61 @@ function FillInner() {
   };
 
   const requiredSignatureChecks = () => {
-    const checks: { label: string; name: string; sign: string }[] = [
-      { label: "일반작업 작업감독자", name: data.supervisor, sign: data.supervisorSign },
-      { label: "Work Sheet 작성자/담당자", name: data.worksheetAuthor, sign: data.worksheetAuthorSign },
-      { label: "신청/강사", name: data.representativeSignName, sign: data.representativeSign },
+    // 소방안전관리자(박세현) 서명은 업체가 아니라 환경안전 검토 단계에서 기재 → 업체 제출 필수에서 제외.
+    const checks: { label: string; name: string; sign: string; anchor: string }[] = [
+      { label: "일반작업 작업감독자", name: data.supervisor, sign: data.supervisorSign, anchor: "sec-general" },
+      { label: "Work Sheet 작성자/담당자", name: data.worksheetAuthor, sign: data.worksheetAuthorSign, anchor: "sec-jsa" },
+      { label: "신청/강사", name: data.representativeSignName, sign: data.representativeSign, anchor: "sec-edu" },
     ];
     if (data.workTypes.includes("hot")) {
-      checks.push(
-        { label: "화재감시자", name: data.hotFireWatcher, sign: data.hotFireWatcherSign },
-        { label: "소방안전관리자", name: data.hotFireManager || "박세현", sign: data.hotFireManagerSign },
-      );
+      checks.push({ label: "화재감시자", name: data.hotFireWatcher, sign: data.hotFireWatcherSign, anchor: "sec-hot" });
     }
-    if (data.workTypes.includes("confined")) checks.push({ label: "감시인", name: data.confinedWatcher, sign: data.confinedWatcherSign });
-    if (data.workTypes.includes("electrical")) checks.push({ label: "차단인", name: data.electricalCutoffPerson, sign: data.electricalCutoffPersonSign });
-    if (data.workTypes.includes("excavation")) checks.push({ label: "매설확인자", name: data.excavationBuriedChecker, sign: data.excavationBuriedCheckerSign });
-    if (data.workTypes.includes("heavy")) checks.push({ label: "신호수/유도자", name: data.heavySignaler, sign: data.heavySignalerSign });
+    if (data.workTypes.includes("confined")) checks.push({ label: "감시인", name: data.confinedWatcher, sign: data.confinedWatcherSign, anchor: "sec-confined" });
+    if (data.workTypes.includes("electrical")) checks.push({ label: "차단인", name: data.electricalCutoffPerson, sign: data.electricalCutoffPersonSign, anchor: "sec-electrical" });
+    if (data.workTypes.includes("excavation")) checks.push({ label: "매설확인자", name: data.excavationBuriedChecker, sign: data.excavationBuriedCheckerSign, anchor: "sec-excavation" });
+    if (data.workTypes.includes("heavy")) checks.push({ label: "신호수/유도자", name: data.heavySignaler, sign: data.heavySignalerSign, anchor: "sec-heavy" });
     if (data.energyMode === "general" && !data.energyDeferred) {
-      checks.push({ label: "에너지원 차단인", name: data.energyPerson, sign: data.energyPersonSign || "" });
+      checks.push({ label: "에너지원 차단인", name: data.energyPerson, sign: data.energyPersonSign || "", anchor: "sec-energy" });
     }
     return checks;
   };
 
-  const validate = (): string[] => {
-    const miss: string[] = [];
-    if (!data.company.trim()) miss.push("업체명(부서명)");
-    if (!data.supervisor.trim()) miss.push("작업감독자");
-    if (!data.manager) miss.push("담당자(의뢰자)");
-    if (!data.workDate) miss.push("작업일자");
-    if (!data.workContent.trim()) miss.push("작업내용");
-    if (data.workTypes.length === 0) miss.push("작업형태(1개 이상 선택)");
-    if (data.privacyConsent !== "agree") miss.push("개인정보 수집·이용 동의(동의 함)");
-    if (!data.applicantName.trim()) miss.push("신청(업체) 성명");
-    if (!data.applicantSign) miss.push("신청(업체) 서명");
+  // 검증 결과: 각 미작성 항목과 이동할 화면 앵커(섹션 id).
+  const validate = (): { label: string; anchor: string }[] => {
+    const miss: { label: string; anchor: string }[] = [];
+    const add = (label: string, anchor: string) => miss.push({ label, anchor });
+    if (!data.company.trim()) add("업체명(부서명)", "sec-basic");
+    if (!data.supervisor.trim()) add("작업감독자", "sec-basic");
+    if (!data.manager) add("담당자(의뢰자)", "sec-basic");
+    if (!data.workDate) add("작업일자", "sec-basic");
+    if (!data.workContent.trim()) add("작업내용", "sec-basic");
+    if (data.workTypes.length === 0) add("작업형태(1개 이상 선택)", "sec-worktypes");
+    if (data.processes.length === 0) add("작업장소 / 공정(1개 이상 선택)", "sec-process");
+    if (data.privacyConsent !== "agree") add("개인정보 수집·이용 동의(동의 함)", "sec-privacy");
+    if (!data.applicantName.trim()) add("신청(업체) 성명", "sec-applicant");
+    if (!data.applicantSign) add("신청(업체) 서명", "sec-applicant");
     requiredSignatureChecks().forEach((item) => {
-      if (!item.name.trim()) miss.push(`${item.label} 성명`);
-      if (!item.sign) miss.push(`${item.label} 서명`);
+      if (!item.name.trim()) add(`${item.label} 성명`, item.anchor);
+      if (!item.sign) add(`${item.label} 서명`, item.anchor);
     });
     return miss;
+  };
+
+  // 미작성 항목 위치로 스크롤 + 잠깐 강조
+  const flashAnchor = (id: string) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("fl-flash");
+    window.setTimeout(() => el.classList.remove("fl-flash"), 2200);
   };
 
   const handleSubmit = async () => {
     if (!user) { alert("로그인 후 이용 가능합니다."); return; }
     const missing = validate();
     if (missing.length) {
-      alert("다음 필수 항목을 확인해주세요:\n\n· " + missing.join("\n· "));
+      flashAnchor(missing[0].anchor);
+      alert("다음 필수 항목을 확인해주세요:\n\n· " + missing.map((m) => m.label).join("\n· ") + "\n\n첫 항목 위치로 이동했습니다.");
       return;
     }
     // 실제로 비어 있는 권장 항목만 경고로 모은다 (필수 항목은 위 validate 에서 이미 차단됨).
@@ -654,7 +665,7 @@ function FillInner() {
         ) : (
           <button onClick={() => router.push("/login")}>로그인</button>
         )}
-        {isReadOnly && (
+        {isReadOnly && isGuest && (
           <button onClick={() => window.location.assign("/fill")}>새 허가서 작성</button>
         )}
         <button onClick={() => setShowPreview((s) => !s)}>{showPreview ? "미리보기 숨기기" : "미리보기"}</button>
@@ -823,7 +834,7 @@ function FillInner() {
             </div>
           )}
 
-          <Section title="① 기본 정보">
+          <Section title="① 기본 정보" id="sec-basic">
             <Row label="업체명(부서명)" required><Text value={data.company} onChange={(v) => update("company", v)} readOnly={isReadOnly || isGuest} /></Row>
             <Row label="대표자"><Text value={data.representative} onChange={(v) => update("representative", v)} readOnly={isReadOnly} /></Row>
             <Row label="작업감독자" required><Text value={data.supervisor} onChange={(v) => update("supervisor", v)} readOnly={isReadOnly} /></Row>
@@ -849,7 +860,7 @@ function FillInner() {
             <Row label="작업내용" required><Area value={data.workContent} onChange={(v) => update("workContent", v)} readOnly={isReadOnly} /></Row>
           </Section>
 
-          <Section title="⑦ 작업형태 (복수 선택)">
+          <Section title="⑦ 작업형태 (복수 선택)" id="sec-worktypes">
             <CheckGroup options={WORK_TYPES.map((w) => ({ v: w.v, label: w.label }))} selected={data.workTypes} onToggle={(v) => toggleIn("workTypes", v)} cols={1} readOnly={isReadOnly} />
             {data.workTypes.includes("etc") && <Row label="기타 내용"><Text value={data.workTypeEtc} onChange={(v) => update("workTypeEtc", v)} readOnly={isReadOnly} /></Row>}
           </Section>
@@ -868,7 +879,7 @@ function FillInner() {
             </Section>
           )}
 
-          <Section title="작업장소 / 공정 (복수 선택)">
+          <Section title="작업장소 / 공정 (복수 선택)" id="sec-process">
             <p className="muted">선택한 공정 위에 빨간 동그라미가 표시됩니다.</p>
             <CheckGroup options={PROCESSES.map((p) => ({ v: p.name }))} selected={data.processes} onToggle={(v) => toggleIn("processes", v)} cols={3} readOnly={isReadOnly} />
             {data.processes.includes("기타") && <Row label="기타 장소/공정"><Text value={data.processEtc} onChange={(v) => update("processEtc", v)} readOnly={isReadOnly} /></Row>}
@@ -885,7 +896,7 @@ function FillInner() {
           )}
 
           {data.workTypes.includes("general") && (
-            <Section title="② 일반작업 (공통사항)">
+            <Section title="② 일반작업 (공통사항)" id="sec-general">
               <CheckGroup options={GENERAL} selected={data.general} onToggle={(v) => toggleIn("general", v)} cols={1} readOnly={isReadOnly} />
               <Row label="작업감독자 서명" required>
                 <SignatureField value={data.supervisorSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "supervisorSign" })} />
@@ -894,7 +905,7 @@ function FillInner() {
           )}
 
           {data.workTypes.includes("hot") && (
-            <Section title="③ 화기작업">
+            <Section title="③ 화기작업" id="sec-hot">
               <CheckGroup options={HOT} selected={data.hot} onToggle={(v) => toggleIn("hot", v)} cols={1} readOnly={isReadOnly} />
               <div className="tworow">
                 <Row label="화재감시자"><Text value={data.hotFireWatcher} onChange={(v) => update("hotFireWatcher", v)} readOnly={isReadOnly} /></Row>
@@ -904,15 +915,15 @@ function FillInner() {
                 <Row label="화재감시자 서명" required>
                   <SignatureField value={data.hotFireWatcherSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "hotFireWatcherSign" })} />
                 </Row>
-                <Row label="소방안전관리자 서명" required>
-                  <SignatureField value={data.hotFireManagerSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "hotFireManagerSign" })} />
+                <Row label="소방안전관리자 서명" hint="환경안전(박세현) 검토 단계에서 서명됩니다">
+                  <SignatureField value={data.hotFireManagerSign} readOnly onClick={() => {}} />
                 </Row>
               </div>
             </Section>
           )}
 
           {data.workTypes.includes("confined") && (
-            <Section title="④ 밀폐공간작업">
+            <Section title="④ 밀폐공간작업" id="sec-confined">
               <CheckGroup options={CONFINED} selected={data.confined} onToggle={(v) => toggleIn("confined", v)} cols={1} readOnly={isReadOnly} />
               <Row label="감시인"><Text value={data.confinedWatcher} onChange={(v) => update("confinedWatcher", v)} readOnly={isReadOnly} /></Row>
               <Row label="감시인 서명" required>
@@ -922,7 +933,7 @@ function FillInner() {
           )}
 
           {data.workTypes.includes("electrical") && (
-            <Section title="⑤ 전기차단(정전)작업">
+            <Section title="⑤ 전기차단(정전)작업" id="sec-electrical">
               <CheckGroup options={ELECTRICAL} selected={data.electrical} onToggle={(v) => toggleIn("electrical", v)} cols={1} readOnly={isReadOnly} />
               <div className="tworow">
                 <Row label="차단시간">
@@ -957,7 +968,7 @@ function FillInner() {
           )}
 
           {data.workTypes.includes("excavation") && (
-            <Section title="⑦ 굴착작업">
+            <Section title="⑦ 굴착작업" id="sec-excavation">
               <CheckGroup options={EXCAVATION} selected={data.excavation} onToggle={(v) => toggleIn("excavation", v)} cols={1} readOnly={isReadOnly} />
               <Row label="매설확인자"><Text value={data.excavationBuriedChecker} onChange={(v) => update("excavationBuriedChecker", v)} readOnly={isReadOnly} /></Row>
               <Row label="매설확인자 서명" required>
@@ -967,7 +978,7 @@ function FillInner() {
           )}
 
           {data.workTypes.includes("heavy") && (
-            <Section title="⑧ 중장비취급작업">
+            <Section title="⑧ 중장비취급작업" id="sec-heavy">
               <CheckGroup options={HEAVY} selected={data.heavy} onToggle={(v) => toggleIn("heavy", v)} cols={1} readOnly={isReadOnly} />
               <div className="tworow">
                 <Row label="신호수/유도자"><Text value={data.heavySignaler} onChange={(v) => update("heavySignaler", v)} readOnly={isReadOnly} /></Row>
@@ -985,7 +996,7 @@ function FillInner() {
             </Section>
           )}
 
-          <Section title="⑪ 에너지원 안전잠금장치">
+          <Section title="⑪ 에너지원 안전잠금장치" id="sec-energy">
             <RadioGroup
               options={[{ v: "none", label: "해당사항 없음" }, { v: "general", label: "②항 에너지원차단·표찰부착 체크 시 조치사항 기재" }]}
               value={data.energyMode as any}
@@ -1012,7 +1023,7 @@ function FillInner() {
             )}
           </Section>
 
-          <Section title="⑫ Work Sheet (JSA)">
+          <Section title="⑫ Work Sheet (JSA)" id="sec-jsa">
             <div className="tworow">
               <Row label="작성자/담당자"><Text value={data.worksheetAuthor} onChange={(v) => update("worksheetAuthor", v)} readOnly={isReadOnly} /></Row>
               <Row label="위험성평가 참여자"><Text value={data.riskParticipants} onChange={(v) => update("riskParticipants", v)} readOnly={isReadOnly} /></Row>
@@ -1038,7 +1049,7 @@ function FillInner() {
             />
           </Section>
 
-          <Section title="환경안전 교육실시 및 서약">
+          <Section title="환경안전 교육실시 및 서약" id="sec-edu">
             <p className="muted">대표자가 함께 작업하는 인원을 등록하고, 각자 직접 서명합니다. (최대 18명)</p>
             <div className="tworow">
               <Row label="대표자(강사) 성명"><Text value={data.representativeSignName} onChange={(v) => update("representativeSignName", v)} readOnly={isReadOnly} /></Row>
@@ -1075,12 +1086,12 @@ function FillInner() {
             </div>
           </Section>
 
-          <Section title="개인정보 수집·이용 동의">
+          <Section title="개인정보 수집·이용 동의" id="sec-privacy">
             <p className="muted">※ 수집항목: 성명·소속·주소·전화번호·휴대전화번호 / 목적: 환경안전작업 허가 및 관리 / 보유: 환경안전작업허가 기간. 거부 시 작업허가 불가.</p>
             <RadioGroup options={[{ v: "agree", label: "동의 함" }, { v: "disagree", label: "동의하지 않음" }]} value={data.privacyConsent as any} onChange={(v) => update("privacyConsent", v as any)} readOnly={isReadOnly} />
           </Section>
 
-          <Section title="신청 (업체)">
+          <Section title="신청 (업체)" id="sec-applicant">
             <div className="tworow">
               <Row label="소속"><Text value={data.applicantDept} onChange={(v) => update("applicantDept", v)} readOnly={isReadOnly || isGuest} /></Row>
               <Row label="성명"><Text value={data.applicantName} onChange={(v) => update("applicantName", v)} readOnly={isReadOnly} /></Row>

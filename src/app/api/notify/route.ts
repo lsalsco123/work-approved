@@ -324,10 +324,22 @@ export async function POST(req: NextRequest) {
       headline = "최종 결재 완료";
       intro = `${co}의 「${workContent || "작업"}」 건의 최종 결재가 완료되었습니다. 출력하여 업체에 전달해 주세요.`;
     } else if (kind === "reject") {
-      recipients = Array.from(new Set([managerEmail || NOTIFY_TO]));
+      // 반려 사유는 작성 당사자(업체)에게 직접 전달 + 담당자에게도 통지.
+      let ownerEmail = "";
+      try {
+        const base = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/default/documents`;
+        const pr = await fetch(`${base}/permits/${encodeURIComponent(permitId)}`, {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (pr.ok) {
+          const pj = await pr.json();
+          ownerEmail = pj?.fields?.createdByEmail?.stringValue || "";
+        }
+      } catch { /* 업체 이메일 조회 실패 시 담당자에게만 발송 */ }
+      recipients = Array.from(new Set([ownerEmail, managerEmail || NOTIFY_TO].filter(Boolean)));
       subject = `[반려] ${co} — ${wc}`;
-      headline = "결재 반려";
-      intro = `해당 작업허가서가 반려되었습니다.${reason ? ` (사유: ${reason})` : ""}`;
+      headline = "결재 반려 — 보완 후 재제출 필요";
+      intro = `제출하신 작업허가서가 반려되었습니다.${reason ? ` 사유: ${reason}` : ""} 내용을 보완하여 다시 제출해 주세요.`;
     } else { // submit
       recipients = both;
       subject = `[작업허가서 제출] ${co} — ${wc}`;

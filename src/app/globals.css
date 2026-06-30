@@ -431,3 +431,11 @@ button.btn-accent:disabled { background: #94a3b8; cursor: not-allowed; }
 .sheet td .cellchips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .sheet-empty { text-align: center; color: #94a3b8; padding: 18px; }
 .sheet-hint { font-size: 12px; color: #94a3b8; margin: 0 0 6px; }
+
+/* 제출 시 미작성 항목 위치로 이동 후 잠깐 강조 */
+.fl-flash { animation: flFlash 2.2s ease-out; border-radius: 10px; scroll-margin: 80px; }
+@keyframes flFlash {
+  0%   { box-shadow: 0 0 0 3px rgba(224,123,0,.95), 0 0 0 7px rgba(224,123,0,.28); background: rgba(224,123,0,.10); }
+  70%  { box-shadow: 0 0 0 3px rgba(224,123,0,.95), 0 0 0 7px rgba(224,123,0,.28); background: rgba(224,123,0,.10); }
+  100% { box-shadow: 0 0 0 3px rgba(224,123,0,0),   0 0 0 7px rgba(224,123,0,0);   background: transparent; }
+}

@@ -26,10 +26,10 @@ export function Area({ value, onChange, rows = 3, placeholder, readOnly }: {
     style={readOnly ? { background: "#f1f5f9", cursor: "default", resize: "none" } : undefined} />;
 }
 
-export function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+export function Section({ title, children, defaultOpen = true, id }: { title: string; children: React.ReactNode; defaultOpen?: boolean; id?: string }) {
   const [open, setOpen] = React.useState(defaultOpen);
   return (
-    <section className="sec">
+    <section className="sec" id={id}>
       <button type="button" className="sec-head" onClick={() => setOpen((o) => !o)}>
         <span className={`chev ${open ? "open" : ""}`}>▶</span> {title}
       </button>
