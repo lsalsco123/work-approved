@@ -347,52 +347,68 @@ export async function POST(req: NextRequest) {
       intro = "새 작업허가서가 제출되었습니다. 담당자 1차 결재를 진행해 주세요.";
     }
 
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://work-approved.vercel.app";
+    const FONT = "'Malgun Gothic','맑은 고딕',Arial,sans-serif";
+
+    // 데스크톱 아웃룩(Word 엔진) 호환: div/max-width/radius/rgba 대신 table+bgcolor+attr 기반.
+    const infoRows: [string, string, boolean][] = [
+      ["업체명", company || "", true],
+      ["작업내용", workContent || "", false],
+      ["작업일자", workDate || "", false],
+      ["작업시간", (startTime || endTime) ? `${startTime || "-"} ~ ${endTime || "-"}` : "", false],
+      ["작업감독자", supervisor || "", false],
+      ["담당자(의뢰자)", managerName || "", true],
+    ];
+    const rowsHtml = infoRows.map(([label, val, bold]) => `
+      <tr>
+        <td width="96" style="padding:7px 10px 7px 0;font-family:${FONT};font-size:14px;color:#64748b;vertical-align:top;white-space:nowrap;">${esc(label)}</td>
+        <td style="padding:7px 0;font-family:${FONT};font-size:14px;color:#1e293b;${bold ? "font-weight:bold;" : ""}">${esc(val) || "-"}</td>
+      </tr>`).join("");
+
+    const buttonHtml = permitId ? `
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
+        <tr>
+          <td align="center" bgcolor="#003377" style="background:#003377;border-radius:6px;">
+            <a href="${appUrl}/fill?id=${esc(permitId)}" style="display:inline-block;padding:11px 22px;font-family:${FONT};font-size:14px;font-weight:bold;color:#ffffff;text-decoration:none;">
+              ${kind === "final" ? "출력/확인하기 &rarr;" : "결재/확인하기 &rarr;"}
+            </a>
+          </td>
+        </tr>
+      </table>` : "";
+
     const emailHtml = `
-<div style="font-family:'맑은 고딕',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
-  <div style="background:#0a2240;padding:20px 24px;border-bottom:3px solid #e07b00;">
-    <h2 style="margin:0;color:#fff;font-size:17px;">환경안전 작업허가서 — ${esc(headline)}</h2>
-    <p style="margin:4px 0 0;color:rgba(255,255,255,.65);font-size:12px;">LS Alsco 전산 발급 시스템</p>
-  </div>
-  <div style="padding:24px;">
-    <p style="margin:0 0 16px;font-size:14px;color:#1e293b;font-weight:600;">${esc(intro)}</p>
-    <table style="width:100%;border-collapse:collapse;font-size:14px;">
-      <tr><td style="padding:8px 0;color:#64748b;width:100px;">업체명</td><td style="padding:8px 0;font-weight:600;">${esc(company) || "-"}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">작업내용</td><td style="padding:8px 0;">${esc(workContent) || "-"}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">작업일자</td><td style="padding:8px 0;">${esc(workDate) || "-"}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">작업시간</td><td style="padding:8px 0;">${esc(startTime) || "-"} ~ ${esc(endTime) || "-"}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">작업감독자</td><td style="padding:8px 0;">${esc(supervisor) || "-"}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">담당자(의뢰자)</td><td style="padding:8px 0;font-weight:600;">${esc(managerName) || "-"}</td></tr>
-    </table>
-    ${permitId ? `
-    <div style="margin-top:16px;">
-      <a href="${process.env.NEXT_PUBLIC_APP_URL ?? "https://work-approved.vercel.app"}/fill?id=${esc(permitId)}"
-         style="display:inline-block;padding:10px 20px;background:#003377;color:#fff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">
-        ${kind === "final" ? "출력/확인하기 →" : "결재/확인하기 →"}
-      </a>
-    </div>` : ""}
-  </div>
-  <div style="padding:12px 24px;background:#f1f5f9;font-size:11px;color:#94a3b8;">
-    이 메일은 LS Alsco 작업허가서 시스템에서 자동 발송되었습니다.
-  </div>
-</div>`;
-
-    const attachmentHtml = permitData
-      ? generateAttachmentHtml(permitData, permitId ?? "")
-      : null;
-
-    const filename = `작업허가서_${(company || "업체").replace(/[/\\?%*:|"<>]/g, "_")}_${workDate || "날짜없음"}.html`;
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f1f5f9;margin:0;padding:0;">
+  <tr>
+    <td align="center" style="padding:20px 12px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#ffffff;border:1px solid #e2e8f0;">
+        <tr>
+          <td bgcolor="#0a2240" style="background-color:#0a2240;border-bottom:3px solid #e07b00;padding:20px 24px;">
+            <div style="font-family:${FONT};font-size:17px;font-weight:bold;color:#ffffff;">환경안전 작업허가서 &mdash; ${esc(headline)}</div>
+            <div style="font-family:${FONT};font-size:12px;color:#9fb3c8;padding-top:4px;">LS Alsco 전산 발급 시스템</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:24px;">
+            <p style="margin:0 0 14px;font-family:${FONT};font-size:14px;color:#1e293b;font-weight:bold;">${esc(intro)}</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rowsHtml}</table>
+            ${buttonHtml}
+          </td>
+        </tr>
+        <tr>
+          <td bgcolor="#f1f5f9" style="background-color:#f1f5f9;padding:12px 24px;font-family:${FONT};font-size:11px;color:#94a3b8;">
+            이 메일은 LS Alsco 작업허가서 시스템에서 자동 발송되었습니다.
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>`;
 
     const { data: sent, error: sendError } = await resend.emails.send({
       from: FROM,
       to: recipients,
       subject,
       html: emailHtml,
-      ...(attachmentHtml ? {
-        attachments: [{
-          filename,
-          content: Buffer.from(attachmentHtml, "utf-8"),
-        }],
-      } : {}),
     });
 
     if (sendError) {
