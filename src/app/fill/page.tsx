@@ -21,7 +21,6 @@ import {
 } from "@/lib/templates";
 import { auth, db } from "@/lib/firebase";
 import AccessGate from "@/components/AccessGate";
-import { listJsaRefs, getJsaRef } from "@/lib/jsaRefs";
 import Attachments from "@/components/Attachments";
 import { PermitAttachment } from "@/lib/attachments";
 import { getRequiredDocs } from "@/lib/appConfig";
@@ -123,11 +122,11 @@ function FillInner() {
   const [saving, setSaving] = useState(false);
   const [cloudLoaded, setCloudLoaded] = useState(!cloudId && !templateId);
   // 작업형태별 JSA 레퍼런스가 등록된 작업형태 키
-  const [jsaRefTypes, setJsaRefTypes] = useState<string[]>([]);
   // 작성 모드에서 게스트가 고를 예시 양식 목록
   const [templates, setTemplates] = useState<PermitTemplate[]>([]);
   const [templateName, setTemplateName] = useState("");
-  const [templateWorkType, setTemplateWorkType] = useState("");
+  // 새 예시 양식 작성 시 ?wt=<작업형태> 로 대표 작업형태 prefill
+  const [templateWorkType, setTemplateWorkType] = useState(searchParams.get("wt") || "");
   const [templateOrder, setTemplateOrder] = useState(999);
   const [signatureTarget, setSignatureTarget] = useState<SignatureTarget>(null);
   const [saveApprovalPreset, setSaveApprovalPreset] = useState(false);
@@ -194,18 +193,7 @@ function FillInner() {
   useEffect(() => {
     if (templateMode) return;
     listTemplates().then(setTemplates).catch(() => {});
-    listJsaRefs().then((rs) => setJsaRefTypes(rs.map((r) => r.workType))).catch(() => {});
   }, [templateMode]);
-
-  // 작업형태별 JSA 레퍼런스 불러오기 → 현재 JSA에 이어붙임(최대 6행)
-  const loadJsaRef = async (wt: string) => {
-    try {
-      const ref = await getJsaRef(wt);
-      if (!ref || ref.rows.length === 0) { alert("등록된 레퍼런스가 없습니다."); return; }
-      const merged = [...data.jsa, ...ref.rows].slice(0, 6);
-      update("jsa", merged);
-    } catch { alert("레퍼런스를 불러오지 못했습니다."); }
-  };
 
   // 인증 가드: 로그인하지 않은 사용자는 내부 양식을 볼 수 없도록 로그인 페이지로 이동
   useEffect(() => {
@@ -1031,16 +1019,6 @@ function FillInner() {
             <Row label="작성자/담당자 서명" required>
               <SignatureField value={data.worksheetAuthorSign} readOnly={isReadOnly} onClick={() => setSignatureTarget({ kind: "field", field: "worksheetAuthorSign" })} />
             </Row>
-            {!isReadOnly && data.workTypes.filter((wt) => jsaRefTypes.includes(wt)).length > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-                <span style={{ fontSize: 12, color: "#64748b" }}>레퍼런스 불러오기:</span>
-                {WORK_TYPES.filter((w) => data.workTypes.includes(w.v) && jsaRefTypes.includes(w.v)).map((w) => (
-                  <button key={w.v} type="button" className="mini btn-accent" onClick={() => loadJsaRef(w.v)}>
-                    + {w.label.split(" (")[0]}
-                  </button>
-                ))}
-              </div>
-            )}
             <JsaEditor
               rows={data.jsa}
               onChange={(r) => update("jsa", r)}

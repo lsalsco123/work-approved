@@ -9,11 +9,8 @@ import { listTemplates, deleteTemplate, createTemplate, PermitTemplate } from "@
 import { listCompanyAccounts, adminApprove, adminDeleteAccount, adminSetPassword, adminSetRole, sendResetEmail, CompanyAccount } from "@/lib/accounts";
 import { MANAGERS } from "@/lib/managers";
 import { DEFAULT_TEMPLATES } from "@/lib/samples";
-import { listJsaRefs, getJsaRef, saveJsaRef, deleteJsaRef } from "@/lib/jsaRefs";
 import { getRequiredDocs, setRequiredDocs } from "@/lib/appConfig";
 import { WORK_TYPES } from "@/lib/form";
-import { JsaRow } from "@/lib/types";
-import JsaEditor from "@/components/JsaEditor";
 import SheetTable, { SheetColumn } from "@/components/SheetTable";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
@@ -72,10 +69,14 @@ export default function AdminPage() {
 
   const seedDefaults = async () => {
     if (!user) return;
-    if (!window.confirm(`기본 예시 양식 ${DEFAULT_TEMPLATES.length}종을 생성할까요?`)) return;
+    // 이미 등록된 작업형태는 건너뛰고 미등록 기본 양식만 생성한다(중복 방지).
+    const existing = new Set(templates.map((t) => t.workType));
+    const toCreate = DEFAULT_TEMPLATES.filter((t) => !existing.has(t.workType));
+    if (toCreate.length === 0) { alert("모든 기본 작업형태 예시가 이미 등록되어 있습니다."); return; }
+    if (!window.confirm(`미등록 기본 예시 ${toCreate.length}종을 생성할까요?`)) return;
     setTplBusy(true);
     try {
-      for (const t of DEFAULT_TEMPLATES) await createTemplate(t, user.email);
+      for (const t of toCreate) await createTemplate(t, user.email);
       await fetchTemplates();
     } catch (e) { alert("생성 실패: " + e); }
     finally { setTplBusy(false); }
@@ -161,42 +162,6 @@ export default function AdminPage() {
   const pending = accounts.filter((a) => a.status === "pending");
   const others = accounts.filter((a) => a.status !== "pending");
 
-  // 작업형태별 JSA 레퍼런스 관리
-  const [refTypes, setRefTypes] = useState<string[]>([]);     // 레퍼런스가 등록된 작업형태 키
-  const [refWT, setRefWT] = useState<string>("");             // 편집 중인 작업형태
-  const [refRows, setRefRows] = useState<JsaRow[]>([]);
-  const [refBusy, setRefBusy] = useState(false);
-
-  const fetchRefTypes = async () => {
-    try { setRefTypes((await listJsaRefs()).map((r) => r.workType)); }
-    catch (e) { console.error("JSA 레퍼런스 목록 조회 실패:", e); }
-  };
-  useEffect(() => { if (user?.role === "admin") fetchRefTypes(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const selectRefWT = async (wt: string) => {
-    setRefWT(wt);
-    if (!wt) { setRefRows([]); return; }
-    setRefBusy(true);
-    try { const r = await getJsaRef(wt); setRefRows(r?.rows ?? []); }
-    catch { setRefRows([]); }
-    finally { setRefBusy(false); }
-  };
-  const saveRef = async () => {
-    if (!refWT || !user) return;
-    setRefBusy(true);
-    try { await saveJsaRef(refWT, refRows, user.email); alert("JSA 레퍼런스를 저장했습니다."); await fetchRefTypes(); }
-    catch (e) { alert("저장 실패: " + ((e as Error)?.message ?? String(e))); }
-    finally { setRefBusy(false); }
-  };
-  const removeRef = async () => {
-    if (!refWT || !confirm("이 작업형태의 JSA 레퍼런스를 삭제할까요?")) return;
-    setRefBusy(true);
-    try { await deleteJsaRef(refWT); setRefRows([]); await fetchRefTypes(); }
-    catch (e) { alert("삭제 실패: " + ((e as Error)?.message ?? String(e))); }
-    finally { setRefBusy(false); }
-  };
-  const refWTLabel = (wt: string) => WORK_TYPES.find((w) => w.v === wt)?.label.split(" (")[0] ?? wt;
-
   // 첨부 필요 서류 안내 (업체 작성 화면 첨부 섹션에 노출)
   const [reqDocsText, setReqDocsText] = useState("");
   const [reqDocsBusy, setReqDocsBusy] = useState(false);
@@ -275,27 +240,31 @@ export default function AdminPage() {
     },
   ];
 
-  const tplCols: SheetColumn<PermitTemplate>[] = [
-    { key: "name", header: "예시 양식 이름", width: 320, copyText: (t) => t.name },
-    {
-      key: "act", header: "처리", width: 160, noSelect: true, wrap: true, copyText: () => "",
-      render: (t) => (
-        <div className="cellbtns">
-          <button className="mini" disabled={tplBusy} onClick={() => router.push(`/fill?template=${t.id}`)}>수정</button>
-          <button className="mini danger" disabled={tplBusy} onClick={() => removeTemplate(t)}>삭제</button>
-        </div>
-      ),
-    },
-  ];
-
-  type JsaTypeRow = { v: string; label: string };
-  const jsaTypeRows: JsaTypeRow[] = WORK_TYPES.filter((w) => w.v !== "etc").map((w) => ({ v: w.v, label: w.label.split(" (")[0] }));
-  const jsaCols: SheetColumn<JsaTypeRow>[] = [
+  // 예시 양식: 작업형태별로 등록 여부를 표시 (JSA 레퍼런스와 동일한 방식)
+  const tplByType = (wt: string): PermitTemplate | undefined => templates.find((t) => t.workType === wt);
+  type TplTypeRow = { v: string; label: string };
+  const tplTypeRows: TplTypeRow[] = WORK_TYPES.filter((w) => w.v !== "etc").map((w) => ({ v: w.v, label: w.label.split(" (")[0] }));
+  const tplCols: SheetColumn<TplTypeRow>[] = [
     { key: "label", header: "작업형태", width: 220, copyText: (w) => w.label },
-    { key: "status", header: "등록상태", width: 120, wrap: true, copyText: (w) => (refTypes.includes(w.v) ? "등록됨" : "미등록"),
-      render: (w) => <span className={`chip ${refTypes.includes(w.v) ? "chip-approved" : "chip-draft"}`}>{refTypes.includes(w.v) ? "등록됨" : "미등록"}</span> },
-    { key: "act", header: "편집", width: 130, noSelect: true, wrap: true, copyText: () => "",
-      render: (w) => <button className={`mini ${refWT === w.v ? "btn-accent" : ""}`} disabled={refBusy} onClick={() => selectRefWT(w.v)}>{refWT === w.v ? "편집 중" : "편집"}</button> },
+    {
+      key: "status", header: "등록상태", width: 120, wrap: true,
+      copyText: (w) => (tplByType(w.v) ? "등록됨" : "미등록"),
+      render: (w) => <span className={`chip ${tplByType(w.v) ? "chip-approved" : "chip-draft"}`}>{tplByType(w.v) ? "등록됨" : "미등록"}</span>,
+    },
+    {
+      key: "act", header: "처리", width: 170, noSelect: true, wrap: true, copyText: () => "",
+      render: (w) => {
+        const t = tplByType(w.v);
+        return (
+          <div className="cellbtns">
+            {t
+              ? <button className="mini" disabled={tplBusy} onClick={() => router.push(`/fill?template=${t.id}`)}>수정</button>
+              : <button className="mini btn-accent" disabled={tplBusy} onClick={() => router.push(`/fill?templateNew=1&wt=${w.v}`)}>작성</button>}
+            {t && <button className="mini danger" disabled={tplBusy} onClick={() => removeTemplate(t)}>삭제</button>}
+          </div>
+        );
+      },
+    },
   ];
 
   const permitCols: SheetColumn<PermitRecord>[] = [
@@ -383,42 +352,11 @@ export default function AdminPage() {
           <div className="panel" style={{ marginBottom: 0 }}>
             <div className="panel-head">
               <span className="panel-title" style={{ color: "#6d28d9" }}>예시 양식 관리</span>
-              <span className="panel-sub">외주업체가 작성 화면에서 불러오는 예시입니다.</span>
+              <span className="panel-sub">작업형태별로 예시 양식을 등록하면 업체가 작성 화면에서 불러옵니다. “작성”으로 등록, “수정”으로 편집합니다.</span>
               <div className="grow" />
-              <button className="mini" onClick={() => router.push("/fill?templateNew=1")}>+ 새 예시 양식</button>
-              {templates.length === 0 && (
-                <button className="mini" disabled={tplBusy} onClick={seedDefaults}>{tplBusy ? "생성 중…" : "기본 예시 생성"}</button>
-              )}
+              <button className="mini" disabled={tplBusy} onClick={seedDefaults}>{tplBusy ? "생성 중…" : "기본 예시 일괄 생성"}</button>
             </div>
-            <SheetTable
-              columns={tplCols}
-              rows={templates}
-              rowKey={(t) => t.id}
-              emptyText="아직 예시 양식이 없습니다. “기본 예시 생성”으로 작업형태별 기본 양식 7종을 만들 수 있어요."
-            />
-          </div>
-
-          <div className="panel" style={{ marginBottom: 0 }}>
-            <div className="panel-head">
-              <span className="panel-title" style={{ color: "#0d9488" }}>작업형태별 JSA 레퍼런스</span>
-              <span className="panel-sub">작업형태마다 미리 작성해두면 업체가 작성 화면에서 “레퍼런스 불러오기”로 채웁니다.</span>
-            </div>
-            <SheetTable columns={jsaCols} rows={jsaTypeRows} rowKey={(w) => w.v} />
-            {refWT ? (
-              <div style={{ marginTop: 12 }}>
-                <div className="form-row" style={{ alignItems: "center", marginBottom: 6 }}>
-                  <p style={{ margin: 0, fontSize: 13, color: "#334155" }}>
-                    <b>{refWTLabel(refWT)}</b> 레퍼런스 편집 — 단계/작업종류는 자유 입력입니다(관리자 작성용).
-                  </p>
-                  <div className="grow" />
-                  <button className="mini btn-accent" disabled={refBusy} onClick={saveRef}>{refBusy ? "처리 중…" : "저장"}</button>
-                  {refTypes.includes(refWT) && <button className="mini danger" disabled={refBusy} onClick={removeRef}>삭제</button>}
-                </div>
-                <JsaEditor rows={refRows} onChange={setRefRows} />
-              </div>
-            ) : (
-              <p className="sheet-hint" style={{ marginTop: 8 }}>위 표에서 작업형태의 “편집”을 누르면 해당 JSA 레퍼런스를 작성/수정할 수 있습니다.</p>
-            )}
+            <SheetTable columns={tplCols} rows={tplTypeRows} rowKey={(w) => w.v} />
           </div>
 
           <div className="panel" style={{ marginBottom: 0 }}>

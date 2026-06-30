@@ -173,4 +173,22 @@ export const DEFAULT_TEMPLATES: TemplateInput[] = [
       }],
     },
   },
+  {
+    name: "방사능작업",
+    workType: "radiation",
+    order: 80,
+    data: {
+      ...base(),
+      workContent: "비파괴검사(방사선 투과시험) 작업",
+      workTypes: ["general", "radiation"],
+      radiation: ["방사능 취급자격 유무", "방사능 위험표시 등"],
+      jsa: [{
+        step: "방사선 투과시험",
+        hazard: "1. 방사선 피폭\n2. 출입통제 미흡\n3. 선원 분실",
+        frequency: 2, severity: 5,
+        current: "1. 방사선관리구역 설정\n2. 출입통제·경보\n3. 선량계 착용",
+        reduction: "유자격자 작업, 작업구역 격리, 선원 관리대장 기록",
+      }],
+    },
+  },
 ];
