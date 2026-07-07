@@ -2,8 +2,6 @@
 import React, { useEffect, useState } from "react";
 import { JsaRow, riskGrade } from "@/lib/types";
 
-const blank: JsaRow = { step: "", hazard: "", frequency: "", severity: "", current: "", reduction: "" };
-
 // 위험등급 색상/설명 (riskGrade 로직과 일치)
 const GRADE_INFO: Record<string, { color: string; label: string }> = {
   A: { color: "#dc2626", label: "매우 높음" },
@@ -103,10 +101,9 @@ function RefTableModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// 개별 작업(행) 편집기 — 단계/등급은 행 단위, 위험요인 세트는 건별로 관리
-function JsaRowEditor({ row, index, onPatch, onDelete, readOnly, useSelect, stepOptions }: {
-  row: JsaRow; index: number; onPatch: (patch: Partial<JsaRow>) => void; onDelete: () => void;
-  readOnly?: boolean; useSelect: boolean; stepOptions?: string[];
+// 개별 작업(행) 편집기 — 단계는 작업형태에 따라 자동 설정(읽기전용), 위험요인 세트는 건별로 관리
+function JsaRowEditor({ row, index, onPatch, readOnly }: {
+  row: JsaRow; index: number; onPatch: (patch: Partial<JsaRow>) => void; readOnly?: boolean;
 }) {
   const [items, setItems] = useState<JsaItem[]>(() => parseItems(row));
   const serialized = serializeItems(items);
@@ -137,22 +134,8 @@ function JsaRowEditor({ row, index, onPatch, onDelete, readOnly, useSelect, step
   return (
     <div className="jsa-row">
       <div className="jsa-rowhead">
-        <strong>#{index + 1}</strong>
-        {!readOnly && <button type="button" className="mini danger" onClick={onDelete}>삭제</button>}
+        <span className="jsa-wt"><strong>#{index + 1}</strong> 단계/작업종류: <b>{row.step || "-"}</b></span>
       </div>
-
-      {/* 1) 단계/작업종류 */}
-      <label className="jsa-fld">단계/작업종류
-        {useSelect ? (
-          <select className="inp" value={row.step} onChange={(e) => onPatch({ step: e.target.value })}>
-            <option value="">선택</option>
-            {stepOptions!.map((o) => <option key={o} value={o}>{o}</option>)}
-            {row.step && !stepOptions!.includes(row.step) && <option value={row.step}>{row.step}</option>}
-          </select>
-        ) : (
-          <input className="inp" value={row.step} readOnly={readOnly} onChange={(e) => onPatch({ step: e.target.value })} />
-        )}
-      </label>
 
       {/* 2) 발생빈도 / 치명도 / 위험등급 (작업 전체 기준) */}
       <div className="jsa-grade">
@@ -195,7 +178,7 @@ function JsaRowEditor({ row, index, onPatch, onDelete, readOnly, useSelect, step
   );
 }
 
-export default function JsaEditor({ rows, onChange, readOnly, stepOptions }: {
+export default function JsaEditor({ rows, onChange, readOnly }: {
   rows: JsaRow[]; onChange: (r: JsaRow[]) => void; readOnly?: boolean; stepOptions?: string[];
 }) {
   const [showRef, setShowRef] = useState(false);
@@ -203,32 +186,19 @@ export default function JsaEditor({ rows, onChange, readOnly, stepOptions }: {
     if (readOnly) return;
     onChange(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
   };
-  const add = () => { if (!readOnly && rows.length < 6) onChange([...rows, { ...blank }]); };
-  const del = (i: number) => { if (!readOnly) onChange(rows.filter((_, j) => j !== i)); };
-  const useSelect = !readOnly && !!stepOptions && stepOptions.length > 0;
 
   return (
     <div className="jsa">
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-        <p className="muted" style={{ flex: 1 }}>⑫ 작업 위험성평가(JSA) — 참고표를 보고 작성하세요. 위험등급은 자동 계산됩니다. (최대 6행)</p>
+        <p className="muted" style={{ flex: 1 }}>⑫ 작업 위험성평가(JSA) — 행은 선택한 <b>작업형태</b>에 따라 자동으로 만들어집니다. 위험등급은 자동 계산됩니다.</p>
         <button type="button" className="mini btn-accent" onClick={() => setShowRef(true)}>📋 참고표 보기</button>
       </div>
-      {!readOnly && !useSelect && (
-        <p className="muted" style={{ color: "#b45309" }}>※ 단계/작업종류는 위에서 <b>작업형태</b>를 선택하면 드롭다운으로 고를 수 있습니다.</p>
+      {!readOnly && rows.length === 0 && (
+        <p className="muted" style={{ color: "#b45309" }}>※ 위 <b>작업형태</b>를 선택하면 해당 작업의 JSA 행이 나타납니다.</p>
       )}
       {rows.map((r, i) => (
-        <JsaRowEditor
-          key={i}
-          row={r}
-          index={i}
-          onPatch={(p) => patch(i, p)}
-          onDelete={() => del(i)}
-          readOnly={readOnly}
-          useSelect={useSelect}
-          stepOptions={stepOptions}
-        />
+        <JsaRowEditor key={r.workType || i} row={r} index={i} onPatch={(p) => patch(i, p)} readOnly={readOnly} />
       ))}
-      {!readOnly && rows.length < 6 && <button type="button" className="mini" onClick={add}>+ 행 추가</button>}
       {showRef && <RefTableModal onClose={() => setShowRef(false)} />}
     </div>
   );

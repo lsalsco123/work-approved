@@ -25,7 +25,7 @@ export function sampleGeneral(): PermitData {
     riskParticipants: "홍길동, 김민수, 김철수, 김박수",
     jsa: [
       {
-        step: "일반작업",
+        step: "일반작업", workType: "general",
         hazard: "1. 현장 외 구역 무단출입으로 인한 충돌\n2. 작업특성 미인지로 인한 부상\n3. 전동공구 사용시 감전사고",
         frequency: 1, severity: 2,
         current: "1. 작업구획에 대한 사전교육\n2. 작업전 개인별 작업지시\n3. 전동공구 및 작업선 사전상태 확인",
@@ -72,7 +72,7 @@ export const DEFAULT_TEMPLATES: TemplateInput[] = [
       gear: ["안전모", "안전화", "보안면", "방진마스크"],
       hot: ["소화기 비치 유무", "불티비산방지 조치유무", "가스 농도 측정", "가연성(인화) 물질 제거"],
       jsa: [{
-        step: "화기작업",
+        step: "화기작업", workType: "hot",
         hazard: "1. 불티 비산에 의한 화재\n2. 용접 흄·가스 흡입\n3. 고온부 접촉 화상",
         frequency: 2, severity: 3,
         current: "1. 소화기·불티방지포 비치\n2. 가연물 제거 및 환기\n3. 보호구 착용",
@@ -91,7 +91,7 @@ export const DEFAULT_TEMPLATES: TemplateInput[] = [
       gear: ["안전모", "안전화", "안전대(안전밸트)"],
       elevated: ["안전대(안전밸트) 착용", "작업발판 및 안전난간 설치"],
       jsa: [{
-        step: "고소작업",
+        step: "고소작업", workType: "elevated",
         hazard: "1. 추락\n2. 공구·자재 낙하\n3. 작업발판 전도",
         frequency: 2, severity: 4,
         current: "1. 안전대 체결\n2. 안전난간·방망 설치\n3. 발판 고정상태 확인",
@@ -110,7 +110,7 @@ export const DEFAULT_TEMPLATES: TemplateInput[] = [
       gear: ["안전모", "안전화", "공기호흡기"],
       confined: ["가스 농도 측정", "환기 및 배기장치 설치", "호흡용 보호구 유무", "해당작업자 외 출입금지 조치"],
       jsa: [{
-        step: "밀폐공간작업",
+        step: "밀폐공간작업", workType: "confined",
         hazard: "1. 산소결핍 질식\n2. 유해가스 중독\n3. 비상시 구조 지연",
         frequency: 2, severity: 4,
         current: "1. 작업 전·중 가스농도 측정\n2. 강제환기 실시\n3. 감시인 배치",
@@ -129,7 +129,7 @@ export const DEFAULT_TEMPLATES: TemplateInput[] = [
       gear: ["안전모", "안전화", "절연보호구"],
       electrical: ["주전원 차단 확인", "전기차단.잠금 표시 부착", "충전부 절연상태 및 방호상태 확인"],
       jsa: [{
-        step: "전기차단작업",
+        step: "전기차단(정전)작업", workType: "electrical",
         hazard: "1. 감전\n2. 아크 화상\n3. 오결선·오조작",
         frequency: 2, severity: 4,
         current: "1. 차단·잠금(LOTO)\n2. 검전기로 무전압 확인\n3. 절연보호구 착용",
@@ -147,7 +147,7 @@ export const DEFAULT_TEMPLATES: TemplateInput[] = [
       workTypes: ["general", "heavy"],
       heavy: ["자격 확인", "작업계획서 확인", "노면상태 및 주변설비 확인", "장비 이동경로 확인"],
       jsa: [{
-        step: "중장비취급작업",
+        step: "중장비취급작업", workType: "heavy",
         hazard: "1. 협착·충돌\n2. 장비 전도\n3. 인양물 낙하",
         frequency: 2, severity: 4,
         current: "1. 신호수 배치\n2. 작업반경 출입통제\n3. 노면·자격 확인",
@@ -165,7 +165,7 @@ export const DEFAULT_TEMPLATES: TemplateInput[] = [
       workTypes: ["general", "excavation"],
       excavation: ["지하매설물(기계배관) 확인", "지하매설물(전기동력선) 확인", "지반상태확인"],
       jsa: [{
-        step: "굴착작업",
+        step: "굴착작업", workType: "excavation",
         hazard: "1. 토사 붕괴·매몰\n2. 지하매설물 파손\n3. 장비 협착",
         frequency: 2, severity: 4,
         current: "1. 흙막이·구배 확보\n2. 매설물 사전확인\n3. 작업반경 통제",
@@ -183,7 +183,7 @@ export const DEFAULT_TEMPLATES: TemplateInput[] = [
       workTypes: ["general", "radiation"],
       radiation: ["방사능 취급자격 유무", "방사능 위험표시 등"],
       jsa: [{
-        step: "방사선 투과시험",
+        step: "방사능작업", workType: "radiation",
         hazard: "1. 방사선 피폭\n2. 출입통제 미흡\n3. 선원 분실",
         frequency: 2, severity: 5,
         current: "1. 방사선관리구역 설정\n2. 출입통제·경보\n3. 선량계 착용",

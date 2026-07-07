@@ -3,7 +3,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import { useSearchParams, useRouter } from "next/navigation";
 import { usePermit } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
-import { confirmableItems } from "@/lib/form";
+import { confirmableItems, WORK_TYPES } from "@/lib/form";
 import { PermitData } from "@/lib/types";
 import {
   savePermit, submitPermit, getPermit, saveAdminFields, completePermit, chainAction,
@@ -109,21 +109,6 @@ export function useFillPermit() {
     listTemplates().then(setTemplates).catch(() => {});
   }, [templateMode]);
 
-  // 예시 양식 편집: 일반작업(공통) + 해당 작업형태의 체크항목 카드가 항상 뜨도록 workTypes 보정.
-  // 신규 템플릿은 [general, wt] 로 시드, 기존 템플릿은 general 을 항상 포함(공통사항).
-  // 각 예시는 독립 문서이므로 여기서 넣은 general 은 그 예시에만 저장된다(다른 작업형태와 공유 안 함).
-  useEffect(() => {
-    if (!templateMode || !loaded || !cloudLoaded) return;
-    setData((d) => {
-      const desired = new Set<string>(d.workTypes);
-      desired.add("general");
-      if (templateWorkType) desired.add(templateWorkType);
-      const next = Array.from(desired).filter((x) => x !== "etc");
-      const same = next.length === d.workTypes.length && next.every((x) => d.workTypes.includes(x));
-      return same ? d : { ...d, workTypes: next };
-    });
-  }, [templateMode, loaded, cloudLoaded, isNewTemplate, templateWorkType]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // 인증 가드: 로그인하지 않은 사용자는 내부 양식을 볼 수 없도록 로그인 페이지로 이동
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
@@ -145,6 +130,40 @@ export function useFillPermit() {
   const isReadOnly = templateMode ? false
     : (!isGuest ? !!permitId
       : (!!permitStatus && permitStatus !== "draft" && permitStatus !== "rejected"));
+
+  // 일반작업(공통)은 항상 선택 상태로 유지. 템플릿 편집 시엔 해당 작업형태도 포함.
+  useEffect(() => {
+    if (isReadOnly) return;
+    if (templateMode && (!loaded || !cloudLoaded)) return;
+    setData((d) => {
+      const additions: string[] = [];
+      if (!d.workTypes.includes("general")) additions.push("general");
+      if (templateMode && templateWorkType && templateWorkType !== "general" && !d.workTypes.includes(templateWorkType)) {
+        additions.push(templateWorkType);
+      }
+      if (!additions.length) return d;
+      return { ...d, workTypes: [...additions, ...d.workTypes] };
+    });
+  }, [templateMode, loaded, cloudLoaded, templateWorkType, isReadOnly, data.workTypes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // JSA 행을 선택한 작업형태에 1:1 자동 동기화(작업형태별 1행). 기존 내용은 workType/step 으로 매칭해 보존.
+  useEffect(() => {
+    if (isReadOnly) return;
+    setData((d) => {
+      const sel = WORK_TYPES.filter((w) => w.v !== "etc" && d.workTypes.includes(w.v));
+      const labelOf = (w: { label: string }) => w.label.split(" (")[0];
+      const next = sel.map((w) => {
+        const label = labelOf(w);
+        const found = d.jsa.find((r) => r.workType === w.v)
+          ?? d.jsa.find((r) => !r.workType && r.step === label);
+        const bs = found ?? { step: label, workType: w.v, hazard: "", frequency: "" as const, severity: "" as const, current: "", reduction: "" };
+        if (bs.workType === w.v && bs.step === label) return bs;
+        return { ...bs, workType: w.v, step: label };
+      });
+      const same = next.length === d.jsa.length && next.every((r, i) => r === d.jsa[i]);
+      return same ? d : { ...d, jsa: next };
+    });
+  }, [data.workTypes, isReadOnly]); // eslint-disable-line react-hooks/exhaustive-deps
   const canSubmit = isGuest && (!permitStatus || permitStatus === "draft" || permitStatus === "rejected");
 
   const handleSave = async (): Promise<string | null> => {

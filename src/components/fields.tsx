@@ -38,19 +38,24 @@ export function Section({ title, children, defaultOpen = true, id }: { title: st
   );
 }
 
-export function CheckGroup({ options, selected, onToggle, cols = 2, readOnly }: {
-  options: { v: string; label?: string }[]; selected: string[]; onToggle: (v: string) => void; cols?: number; readOnly?: boolean;
+export function CheckGroup({ options, selected, onToggle, cols = 2, readOnly, locked = [] }: {
+  options: { v: string; label?: string }[]; selected: string[]; onToggle: (v: string) => void; cols?: number; readOnly?: boolean; locked?: string[];
 }) {
   return (
     <div className="chkgrid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
-      {options.map((o) => (
-        <label key={o.v} className={`chk ${selected.includes(o.v) ? "on" : ""}`}
-          style={readOnly ? { cursor: "default", opacity: selected.includes(o.v) ? 1 : 0.4 } : undefined}>
-          <input type="checkbox" checked={selected.includes(o.v)}
-            onChange={() => { if (!readOnly) onToggle(o.v); }} disabled={readOnly} />
-          <span>{o.label ?? o.v}</span>
-        </label>
-      ))}
+      {options.map((o) => {
+        const isLocked = locked.includes(o.v);
+        const on = selected.includes(o.v) || isLocked;
+        return (
+          <label key={o.v} className={`chk ${on ? "on" : ""}`}
+            style={readOnly || isLocked ? { cursor: "default", opacity: on ? 1 : 0.4 } : undefined}
+            title={isLocked ? "기본 포함 항목 (해제 불가)" : undefined}>
+            <input type="checkbox" checked={on}
+              onChange={() => { if (!readOnly && !isLocked) onToggle(o.v); }} disabled={readOnly || isLocked} />
+            <span>{o.label ?? o.v}{isLocked && " · 기본 포함"}</span>
+          </label>
+        );
+      })}
     </div>
   );
 }

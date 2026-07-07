@@ -152,6 +152,8 @@ body {
 
 /* JSA 재구성: 단계 → 발생빈도/치명도/위험등급 → 건별 세트 */
 .jsa-fld { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 8px; }
+.jsa-wt { font-size: 13px; color: #334155; }
+.jsa-wt b { color: var(--fl-navy-800); }
 .jsa-grade { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
 .jsa-grade label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 600; color: #475569; }
 .jsa-items { border-top: 1px dashed #e2e8f0; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }

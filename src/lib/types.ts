@@ -1,7 +1,8 @@
 // 작업허가서 데이터 모델
 
 export interface JsaRow {
-  step: string;          // 단계 / 작업명
+  step: string;          // 단계 / 작업명 (선택한 작업형태 라벨 — 자동 설정)
+  workType?: string;     // 바인딩된 작업형태 키(general/hot/…) — 작업형태 선택에 따라 자동 파생
   hazard: string;        // 유해위험요인
   frequency: number | ""; // 발생빈도 1~5
   severity: number | ""; // 치명도 1~5
