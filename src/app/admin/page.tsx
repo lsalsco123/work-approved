@@ -150,16 +150,32 @@ export default function AdminPage() {
     if (v === "factory") return run(a.uid, () => adminSetRole(a.uid, "manager", "factory", "이태훈"), "공장장으로 지정했습니다.");
     if (v.startsWith("req:")) return run(a.uid, () => adminSetRole(a.uid, "manager", "requester", v.slice(4)), "담당자로 지정했습니다.");
   };
-  const RoleSelect = ({ a }: { a: CompanyAccount }) => (
-    <select className="inp" style={{ width: 160, fontSize: 12 }} value={roleValue(a)} disabled={busyUid === a.uid} onChange={(e) => onSetRole(a, e.target.value)}>
-      <option value="guest">업체</option>
-      <option value="admin">시스템관리자</option>
-      <option value="factory">관리자·공장장</option>
-      <optgroup label="관리자·담당자">
-        {MANAGERS.map((m) => <option key={m.name} value={`req:${m.name}`}>{m.name} ({m.dept})</option>)}
-      </optgroup>
-    </select>
-  );
+  const RoleSelect = ({ a }: { a: CompanyAccount }) => {
+    const isSelf = a.uid === user?.uid;
+    // 미인증/승인대기 계정을 매니저·관리자로 승격하면 검증 절차를 건너뛰고 즉시 전체 접근이 열림.
+    const notReady = a.status !== "active" || !a.emailVerified;
+    return (
+      <select
+        className="inp" style={{ width: 160, fontSize: 12 }} value={roleValue(a)}
+        disabled={busyUid === a.uid || isSelf}
+        title={isSelf ? "본인 역할은 변경할 수 없습니다." : notReady ? "승인·이메일인증 완료 후 역할을 지정하세요." : undefined}
+        onChange={(e) => {
+          if (e.target.value !== "guest" && notReady
+              && !window.confirm("아직 승인/이메일 인증이 완료되지 않은 계정입니다. 그래도 역할을 지정할까요?")) {
+            return;
+          }
+          onSetRole(a, e.target.value);
+        }}
+      >
+        <option value="guest">업체</option>
+        <option value="admin">시스템관리자</option>
+        <option value="factory">관리자·공장장</option>
+        <optgroup label="관리자·담당자">
+          {MANAGERS.map((m) => <option key={m.name} value={`req:${m.name}`}>{m.name} ({m.dept})</option>)}
+        </optgroup>
+      </select>
+    );
+  };
 
   const pending = accounts.filter((a) => a.status === "pending");
   const others = accounts.filter((a) => a.status !== "pending");
@@ -272,15 +288,18 @@ export default function AdminPage() {
     { key: "role", header: "역할", width: 180, noSelect: true, wrap: true, copyText: roleLabel, render: (a) => <RoleSelect a={a} /> },
     {
       key: "act", header: "처리", width: 230, noSelect: true, wrap: true, copyText: () => "",
-      render: (a) => (
-        <div className="cellbtns">
-          {a.status === "pending"
-            ? <button className="mini btn-approve" disabled={busyUid === a.uid || !a.emailVerified} title={a.emailVerified ? "" : "이메일 인증 후 승인 가능"} onClick={() => onApprove(a)}>승인</button>
-            : <button className="mini" disabled={busyUid === a.uid} onClick={() => onSetPassword(a)}>비번 변경</button>}
-          <button className="mini" disabled={busyUid === a.uid} onClick={() => onResetEmail(a)}>재설정 메일</button>
-          <button className="mini btn-reject" disabled={busyUid === a.uid} onClick={() => onDelete(a)}>삭제</button>
-        </div>
-      ),
+      render: (a) => {
+        const isSelf = a.uid === user?.uid;
+        return (
+          <div className="cellbtns">
+            {a.status === "pending"
+              ? <button className="mini btn-approve" disabled={busyUid === a.uid || !a.emailVerified} title={a.emailVerified ? "" : "이메일 인증 후 승인 가능"} onClick={() => onApprove(a)}>승인</button>
+              : <button className="mini" disabled={busyUid === a.uid} onClick={() => onSetPassword(a)}>비번 변경</button>}
+            <button className="mini" disabled={busyUid === a.uid} onClick={() => onResetEmail(a)}>재설정 메일</button>
+            <button className="mini btn-reject" disabled={busyUid === a.uid || isSelf} title={isSelf ? "본인 계정은 삭제할 수 없습니다." : undefined} onClick={() => onDelete(a)}>삭제</button>
+          </div>
+        );
+      },
     },
   ];
 
