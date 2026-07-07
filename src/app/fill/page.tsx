@@ -8,7 +8,6 @@ import {
 } from "@/lib/form";
 import SignaturePad from "@/components/SignaturePad";
 import SignatureField from "@/components/SignatureField";
-import { sampleGeneral } from "@/lib/samples";
 import { emptyPermit } from "@/lib/types";
 import { MANAGERS } from "@/lib/managers";
 import AccessGate from "@/components/AccessGate";
@@ -26,12 +25,11 @@ function FillInner() {
     data, update, toggleIn,
     showPreview, setShowPreview,
     permitId, permitStatus, permitStage, chain, adminNote, saving, cloudLoaded, loaded,
-    templates,
     signatureTarget, setSignatureTarget, saveApprovalPreset, setSaveApprovalPreset,
     loadError,
     attachments, setAttachments, attachCfgs,
     isGuest, isReadOnly, canSubmit,
-    handleSave, handleSubmit, handleSaveTemplate, applyTemplate,
+    handleSave, handleSubmit, handleSaveTemplate, applyTemplateWorkType, hasTemplateFor,
     toggleConfirm, confirmAll, clearConfirm, handleSaveConfirm,
     doReject, doResubmit, handleComplete,
     addSigner, updateSignerName, removeSigner, setReviewer,
@@ -170,24 +168,7 @@ function FillInner() {
           )}
           {!templateMode && !isReadOnly && (
             <div className="toolbar">
-              {!templateMode && (
-                templates.length > 0 ? (
-                  <select
-                    className="mini"
-                    defaultValue=""
-                    onChange={(e) => { if (e.target.value) { applyTemplate(e.target.value); e.target.value = ""; } }}
-                  >
-                    <option value="">예시 양식 불러오기…</option>
-                    {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                ) : (
-                  <button className="mini" onClick={() => {
-                    const sample = sampleGeneral();
-                    const fixedCompany = user.company || sample.company;
-                    f.setData({ ...sample, company: fixedCompany, applicantDept: fixedCompany });
-                  }}>예시 채우기</button>
-                )
-              )}
+              <span className="muted" style={{ flex: 1, margin: 0 }}>※ 예시 양식은 아래 <b>Work Sheet(JSA)</b>의 각 작업형태 행에서 불러올 수 있습니다.</span>
               <button className="mini danger" onClick={() => {
                 if (window.confirm("모든 입력을 초기화할까요?")) {
                   f.setData({ ...emptyPermit(), company: user.company || "", applicantDept: user.company || "" });
@@ -421,7 +402,8 @@ function FillInner() {
               rows={data.jsa}
               onChange={(r) => update("jsa", r)}
               readOnly={isReadOnly}
-              stepOptions={WORK_TYPES.filter((w) => data.workTypes.includes(w.v)).map((w) => w.label.split(" (")[0])}
+              onLoadExample={!templateMode && !isReadOnly ? applyTemplateWorkType : undefined}
+              canLoadExample={hasTemplateFor}
             />
           </Section>
 

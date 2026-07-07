@@ -102,9 +102,11 @@ function RefTableModal({ onClose }: { onClose: () => void }) {
 }
 
 // 개별 작업(행) 편집기 — 단계는 작업형태에 따라 자동 설정(읽기전용), 위험요인 세트는 건별로 관리
-function JsaRowEditor({ row, index, onPatch, readOnly }: {
+function JsaRowEditor({ row, index, onPatch, readOnly, onLoadExample, canLoadExample }: {
   row: JsaRow; index: number; onPatch: (patch: Partial<JsaRow>) => void; readOnly?: boolean;
+  onLoadExample?: (workType: string) => void; canLoadExample?: (workType: string) => boolean;
 }) {
+  const showLoad = !readOnly && !!onLoadExample && !!row.workType && (canLoadExample ? canLoadExample(row.workType) : true);
   const [items, setItems] = useState<JsaItem[]>(() => parseItems(row));
   const serialized = serializeItems(items);
   // 외부에서 행 내용이 바뀌면(예시 불러오기/초기화) 세트를 다시 파싱
@@ -135,6 +137,9 @@ function JsaRowEditor({ row, index, onPatch, readOnly }: {
     <div className="jsa-row">
       <div className="jsa-rowhead">
         <span className="jsa-wt"><strong>#{index + 1}</strong> 단계/작업종류: <b>{row.step || "-"}</b></span>
+        {showLoad && (
+          <button type="button" className="mini btn-accent" onClick={() => onLoadExample!(row.workType!)}>예시 양식 불러오기</button>
+        )}
       </div>
 
       {/* 2) 발생빈도 / 치명도 / 위험등급 (작업 전체 기준) */}
@@ -178,8 +183,9 @@ function JsaRowEditor({ row, index, onPatch, readOnly }: {
   );
 }
 
-export default function JsaEditor({ rows, onChange, readOnly }: {
-  rows: JsaRow[]; onChange: (r: JsaRow[]) => void; readOnly?: boolean; stepOptions?: string[];
+export default function JsaEditor({ rows, onChange, readOnly, onLoadExample, canLoadExample }: {
+  rows: JsaRow[]; onChange: (r: JsaRow[]) => void; readOnly?: boolean;
+  onLoadExample?: (workType: string) => void; canLoadExample?: (workType: string) => boolean;
 }) {
   const [showRef, setShowRef] = useState(false);
   const patch = (i: number, p: Partial<JsaRow>) => {
@@ -197,7 +203,8 @@ export default function JsaEditor({ rows, onChange, readOnly }: {
         <p className="muted" style={{ color: "#b45309" }}>※ 위 <b>작업형태</b>를 선택하면 해당 작업의 JSA 행이 나타납니다.</p>
       )}
       {rows.map((r, i) => (
-        <JsaRowEditor key={r.workType || i} row={r} index={i} onPatch={(p) => patch(i, p)} readOnly={readOnly} />
+        <JsaRowEditor key={r.workType || i} row={r} index={i} onPatch={(p) => patch(i, p)} readOnly={readOnly}
+          onLoadExample={onLoadExample} canLoadExample={canLoadExample} />
       ))}
       {showRef && <RefTableModal onClose={() => setShowRef(false)} />}
     </div>

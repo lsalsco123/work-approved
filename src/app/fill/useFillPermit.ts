@@ -344,29 +344,30 @@ export function useFillPermit() {
     }
   };
 
-  // 게스트가 예시 양식 선택 → '작업형태별 체크항목 카드'와 'Work Sheet(JSA) 카드'만 채운다.
-  // 기본정보·안전보호구·공정·서명 등 나머지 입력은 그대로 유지(예시가 덮어쓰지 않음).
-  const applyTemplate = (id: string) => {
-    const t = templates.find((x) => x.id === id);
-    if (!t) return;
-    if (!window.confirm(`"${t.name}" 예시를 불러올까요? 작업형태 체크항목과 위험성평가(JSA)만 채워집니다.`)) return;
+  // 특정 작업형태의 예시만 불러오기 — 해당 작업형태의 체크항목 카드 + 그 작업형태의 JSA 행만 채운다.
+  // (JSA 행 옆 버튼에서 호출. 다른 작업형태·기본정보·서명 등은 건드리지 않는다.)
+  const CHECKLIST_KEYS = ["general", "hot", "confined", "electrical", "elevated", "excavation", "heavy", "radiation"];
+  const hasTemplateFor = (wt: string) => templates.some((x) => x.workType === wt);
+  const applyTemplateWorkType = (wt: string) => {
+    const label = WORK_TYPES.find((w) => w.v === wt)?.label.split(" (")[0] ?? wt;
+    const t = templates.find((x) => x.workType === wt);
+    if (!t) { alert(`${label} 예시 양식이 등록되어 있지 않습니다.`); return; }
+    if (!window.confirm(`${label} 예시를 불러올까요? 해당 작업의 체크항목과 위험성평가(JSA)만 채워집니다.`)) return;
     const td = t.data;
-    setData((d) => ({
-      ...d,
-      // 작업형태 선택 + 작업형태별 체크항목 카드
-      workTypes: td.workTypes ?? [],
-      workTypeEtc: td.workTypeEtc ?? "",
-      general: td.general ?? [],
-      hot: td.hot ?? [],
-      confined: td.confined ?? [],
-      electrical: td.electrical ?? [],
-      elevated: td.elevated ?? [],
-      excavation: td.excavation ?? [],
-      heavy: td.heavy ?? [],
-      radiation: td.radiation ?? [],
-      // Work Sheet(JSA) 카드 (위험성평가 항목만)
-      jsa: td.jsa ?? [],
-    }));
+    const srcRow = td.jsa.find((r) => r.workType === wt) ?? td.jsa.find((r) => r.step === label);
+    setData((d) => {
+      const next: PermitData = { ...d };
+      if (CHECKLIST_KEYS.includes(wt)) {
+        const arr = (td as unknown as Record<string, unknown>)[wt];
+        (next as unknown as Record<string, unknown>)[wt] = Array.isArray(arr) ? [...arr] : [];
+      }
+      if (srcRow) {
+        next.jsa = d.jsa.map((r) => (r.workType === wt
+          ? { ...r, hazard: srcRow.hazard, current: srcRow.current, reduction: srcRow.reduction, frequency: srcRow.frequency, severity: srcRow.severity }
+          : r));
+      }
+      return next;
+    });
   };
 
   // 관리자 확인(○ → ●) 토글/일괄/저장
@@ -559,7 +560,7 @@ export function useFillPermit() {
     loadError,
     attachments, setAttachments, attachCfgs,
     isGuest, isReadOnly, canSubmit,
-    handleSave, handleSubmit, handleSaveTemplate, applyTemplate,
+    handleSave, handleSubmit, handleSaveTemplate, applyTemplateWorkType, hasTemplateFor,
     toggleConfirm, confirmAll, clearConfirm, handleSaveConfirm,
     doReject, doResubmit, handleComplete,
     addSigner, updateSignerName, setSignerSign, removeSigner, setReviewer,
