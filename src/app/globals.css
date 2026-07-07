@@ -150,6 +150,17 @@ body {
 .jsa-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 600; color: #475569; }
 .jsa-grid label.wide { grid-column: 1 / -1; }
 
+/* JSA 재구성: 단계 → 발생빈도/치명도/위험등급 → 건별 세트 */
+.jsa-fld { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 8px; }
+.jsa-grade { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.jsa-grade label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 600; color: #475569; }
+.jsa-items { border-top: 1px dashed #e2e8f0; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.jsa-items-head { font-size: 12px; font-weight: 700; color: #334155; }
+.jsa-item { border: 1px solid #e2e8f0; border-left: 3px solid var(--fl-navy-600); border-radius: 6px; padding: 8px 10px; background: #fbfcfe; display: flex; flex-direction: column; gap: 6px; }
+.jsa-item-head { display: flex; align-items: center; justify-content: space-between; }
+.jsa-item-no { font-size: 12px; font-weight: 700; color: var(--fl-navy-800); background: #eef4fb; border-radius: 999px; padding: 1px 9px; }
+.jsa-item label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 600; color: #475569; }
+
 .admin-row { display: grid; grid-template-columns: 70px 1fr 1fr 130px; gap: 6px; align-items: center; margin-bottom: 6px; }
 .admin-note { font-size: 12px; color: #475569; margin-bottom: 6px; }
 
