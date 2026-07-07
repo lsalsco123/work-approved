@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import BuiltBy from "@/components/BuiltBy";
+import { ProfileErrorRetry } from "@/components/AccessGate";
 import {
   listAllPermits, PermitRecord, PermitStatus,
 } from "@/lib/permits";
@@ -51,7 +52,8 @@ export default function AdminPage() {
   const [tplBusy, setTplBusy] = useState(false);
 
   useEffect(() => {
-    if (!loading && (!user || user.role !== "admin")) router.replace("/login");
+    if (loading || user?.profileError) return; // 프로필 조회 실패 시엔 오판 리다이렉트 대신 재시도 화면
+    if (!user || user.role !== "admin") router.replace("/login");
   }, [user, loading, router]);
 
   const fetchAll = async () => {
@@ -364,6 +366,7 @@ export default function AdminPage() {
   ];
 
   if (loading || !user) return <div className="loading"><span className="spinner" />불러오는 중…</div>;
+  if (user.profileError) return <ProfileErrorRetry />;
 
   return (
     <div className="layout">

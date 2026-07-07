@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import BuiltBy from "@/components/BuiltBy";
+import { ProfileErrorRetry } from "@/components/AccessGate";
 import { listChainPermits, PermitRecord, PermitStatus } from "@/lib/permits";
 import SheetTable, { SheetColumn } from "@/components/SheetTable";
 
@@ -36,7 +37,7 @@ export default function ManagerPage() {
   const [filter, setFilter] = useState<"all" | PermitStatus>("submitted");
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || user?.profileError) return; // 프로필 조회 실패 시엔 오판 리다이렉트 대신 재시도 화면
     if (!user) { router.replace("/login"); return; }
     if (user.role === "admin") { router.replace("/admin"); return; }
     if (user.role === "guest") { router.replace("/my"); return; }
@@ -51,7 +52,11 @@ export default function ManagerPage() {
   };
   useEffect(() => { fetchPermits(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (loading || !user || user.role !== "manager") {
+  if (loading || !user) {
+    return <div className="loading"><span className="spinner" />불러오는 중…</div>;
+  }
+  if (user.profileError) return <ProfileErrorRetry />;
+  if (user.role !== "manager") {
     return <div className="loading"><span className="spinner" />불러오는 중…</div>;
   }
 

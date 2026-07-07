@@ -23,6 +23,7 @@ export interface AuthUser {
   managerKind: ManagerKind;   // role=manager 일 때: requester/safety/factory
   managerName: string;        // role=manager 일 때 담당자명(requester) 등
   savedApprovalSign: string;  // 결재자 본인 저장 서명(PNG data URL)
+  profileError: boolean;      // Firestore 프로필 조회 실패(네트워크 지연 등) — role 등은 guest 기본값일 뿐 신뢰하지 말 것
 }
 
 interface AuthCtx {
@@ -51,6 +52,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 타임아웃이 걸린 getDoc 한 번 시도. 실패 시 null.
+  const tryGetProfile = async (uid: string, timeoutMs: number) => {
+    try {
+      return await Promise.race([
+        getDoc(doc(db, "users", uid)),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), timeoutMs)),
+      ]);
+    } catch { return null; }
+  };
+
   const buildUser = async (fbUser: import("firebase/auth").User): Promise<AuthUser> => {
     let role: UserRole = "guest";
     let company = "";
@@ -58,12 +69,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let managerKind: ManagerKind = "";
     let managerName = "";
     let savedApprovalSign = "";
-    try {
-      const snap = await Promise.race([
-        getDoc(doc(db, "users", fbUser.uid)),
-        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 3000)),
-      ]);
-      const d = (snap as Awaited<ReturnType<typeof getDoc>>).data() as
+    // 실제 admin/manager 계정이 일시적 네트워크 지연으로 guest 로 오판되는 것을 막기 위해
+    // 첫 시도(3초) 실패 시 한 번 더(6초) 재시도한 뒤에만 최소 정보(guest)로 진행한다.
+    let profileError = false;
+    let snap = await tryGetProfile(fbUser.uid, 3000);
+    if (!snap) snap = await tryGetProfile(fbUser.uid, 6000);
+    if (snap) {
+      const d = snap.data() as
         {
           role?: UserRole; company?: string; status?: AccountStatus;
           managerKind?: ManagerKind; managerName?: string; savedApprovalSign?: string;
@@ -74,7 +86,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       managerKind = d?.managerKind ?? "";
       managerName = d?.managerName ?? "";
       savedApprovalSign = d?.savedApprovalSign ?? "";
-    } catch { /* 프로필 조회 실패 시 최소 정보로 진행 */ }
+    } else {
+      profileError = true;
+      console.error("사용자 프로필 조회 실패(네트워크 지연/오류) — 최소 정보로 진행:", fbUser.uid);
+    }
     return {
       uid: fbUser.uid,
       email: toDisplayId(fbUser.email ?? ""),
@@ -85,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       managerKind,
       managerName,
       savedApprovalSign,
+      profileError,
     };
   };
 

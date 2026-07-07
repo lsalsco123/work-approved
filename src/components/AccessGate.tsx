@@ -3,6 +3,26 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
+// 프로필(Firestore users/{uid}) 조회 실패 시 공용 재시도 화면.
+// role 이 guest 기본값일 뿐인 상태이므로, 이 값으로 게스트 전용 게이트/리다이렉트를
+// 단정하면 실제 admin/manager 계정이 엉뚱한 화면으로 튕길 수 있다 — 각 페이지 가드에서 사용.
+export function ProfileErrorRetry() {
+  const { refresh, logout } = useAuth();
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "#f1f5f9" }}>
+      <div className="panel" style={{ maxWidth: 420, width: "100%", textAlign: "center" }}>
+        <div style={{ fontSize: 40, marginBottom: 8 }}>⚠️</div>
+        <h2 style={{ margin: "0 0 8px", fontSize: 18 }}>계정 정보를 불러오지 못했습니다</h2>
+        <p style={{ color: "#64748b", fontSize: 14, lineHeight: 1.6, margin: 0 }}>네트워크 상태를 확인한 뒤 다시 시도해 주세요.</p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 16 }}>
+          <button className="mini btn-accent" onClick={() => refresh()}>다시 시도</button>
+          <button className="mini" onClick={() => logout()}>로그아웃</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 게스트(업체) 페이지 접근 게이트.
 //  - 미로그인 → /login
 //  - 관리자 → 그대로 통과(게이트 면제)
@@ -20,6 +40,11 @@ export default function AccessGate({ children }: { children: React.ReactNode }) 
   if (loading || !user) {
     return <div className="loading"><span className="spinner" />불러오는 중…</div>;
   }
+
+  // 프로필 조회 실패로 role 이 guest 기본값일 뿐인 상태 — 실제 게스트로 단정해
+  // 인증대기/차단 화면을 보여주면 admin/manager 를 오판할 수 있으므로 재시도 유도.
+  if (user.profileError) return <ProfileErrorRetry />;
+
   if (user.role !== "guest") return <>{children}</>; // 관리자/시스템관리자는 게이트 면제
 
   const Shell = (inner: React.ReactNode) => (
