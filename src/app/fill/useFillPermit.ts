@@ -284,14 +284,14 @@ export function useFillPermit() {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({
-            company: data.company,
-            workContent: data.workContent,
-            workDate: data.workDate,
-            startTime: data.startTime,
-            endTime: data.endTime,
-            supervisor: data.supervisor,
+            company: submissionData.company,
+            workContent: submissionData.workContent,
+            workDate: submissionData.workDate,
+            startTime: submissionData.startTime,
+            endTime: submissionData.endTime,
+            supervisor: submissionData.supervisor,
             permitId: id,
-            permitData: data,
+            permitData: submissionData,
           }),
         });
         // 제출 자체는 성공(submitted 유지). 알림 메일 발송이 실패하면
