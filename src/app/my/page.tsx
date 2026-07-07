@@ -113,7 +113,7 @@ function MyDashboard() {
           )}
           <button className="mini" onClick={() => location.reload()} disabled={fetching}>↻ 새로고침</button>
           <div className="grow" />
-          <button className="mini btn-accent" onClick={() => router.push("/fill")}>+ 새 허가서 작성</button>
+          <button className="mini btn-accent" onClick={() => window.location.assign("/fill")}>+ 새 허가서 작성</button>
         </div>
 
         {rejected > 0 && (
@@ -137,7 +137,7 @@ function MyDashboard() {
               <path d="M14 2v6h6M9 13h6M9 17h4" />
             </svg>
             <div className="t">아직 작성한 허가서가 없습니다.</div>
-            <button className="mini btn-accent" onClick={() => router.push("/fill")}>+ 첫 허가서 작성하기</button>
+            <button className="mini btn-accent" onClick={() => window.location.assign("/fill")}>+ 첫 허가서 작성하기</button>
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
