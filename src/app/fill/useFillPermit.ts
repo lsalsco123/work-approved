@@ -109,6 +109,21 @@ export function useFillPermit() {
     listTemplates().then(setTemplates).catch(() => {});
   }, [templateMode]);
 
+  // 예시 양식 편집: 일반작업(공통) + 해당 작업형태의 체크항목 카드가 항상 뜨도록 workTypes 보정.
+  // 신규 템플릿은 [general, wt] 로 시드, 기존 템플릿은 general 을 항상 포함(공통사항).
+  // 각 예시는 독립 문서이므로 여기서 넣은 general 은 그 예시에만 저장된다(다른 작업형태와 공유 안 함).
+  useEffect(() => {
+    if (!templateMode || !loaded || !cloudLoaded) return;
+    setData((d) => {
+      const desired = new Set<string>(d.workTypes);
+      desired.add("general");
+      if (templateWorkType) desired.add(templateWorkType);
+      const next = Array.from(desired).filter((x) => x !== "etc");
+      const same = next.length === d.workTypes.length && next.every((x) => d.workTypes.includes(x));
+      return same ? d : { ...d, workTypes: next };
+    });
+  }, [templateMode, loaded, cloudLoaded, isNewTemplate, templateWorkType]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 인증 가드: 로그인하지 않은 사용자는 내부 양식을 볼 수 없도록 로그인 페이지로 이동
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");

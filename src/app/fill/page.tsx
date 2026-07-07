@@ -162,7 +162,13 @@ function FillInner() {
               doResubmit={doResubmit}
             />
           )}
-          {!isReadOnly && (
+          {templateMode && (
+            <div className="note note-info" style={{ marginBottom: 12 }}>
+              <span className="ico">ℹ</span>
+              <span>예시 양식 편집 — <b>작업형태별 체크항목</b>과 <b>Work Sheet(JSA)</b>만 미리 채웁니다. 일반작업은 공통사항이라 함께 편집되며, 이 예시에만 저장됩니다(다른 작업형태와 공유 안 함).</span>
+            </div>
+          )}
+          {!templateMode && !isReadOnly && (
             <div className="toolbar">
               {!templateMode && (
                 templates.length > 0 ? (
@@ -190,6 +196,7 @@ function FillInner() {
             </div>
           )}
 
+          {!templateMode && (<>
           <Section title="① 기본 정보" id="sec-basic">
             <Row label="업체명(부서명)" required><Text value={data.company} onChange={(v) => update("company", v)} readOnly={isReadOnly || isGuest} /></Row>
             <Row label="대표자"><Text value={data.representative} onChange={(v) => update("representative", v)} readOnly={isReadOnly} /></Row>
@@ -220,6 +227,7 @@ function FillInner() {
             <CheckGroup options={WORK_TYPES.map((w) => ({ v: w.v, label: w.label }))} selected={data.workTypes} onToggle={(v) => toggleIn("workTypes", v)} cols={1} readOnly={isReadOnly} />
             {data.workTypes.includes("etc") && <Row label="기타 내용"><Text value={data.workTypeEtc} onChange={(v) => update("workTypeEtc", v)} readOnly={isReadOnly} /></Row>}
           </Section>
+          </>)}
 
           {!templateMode && (() => {
             // 선택한 작업형태들의 첨부 설정을 취합 (업로드 표시 여부 + 안내문)
@@ -253,6 +261,7 @@ function FillInner() {
             );
           })()}
 
+          {!templateMode && (<>
           <Section title="작업장소 / 공정 (복수 선택)" id="sec-process">
             <p className="muted">선택한 공정 위에 빨간 동그라미가 표시됩니다.</p>
             <CheckGroup options={PROCESSES.map((p) => ({ v: p.name }))} selected={data.processes} onToggle={(v) => toggleIn("processes", v)} cols={3} readOnly={isReadOnly} />
@@ -263,9 +272,10 @@ function FillInner() {
             <CheckGroup options={GEAR} selected={data.gear} onToggle={(v) => toggleIn("gear", v)} cols={3} readOnly={isReadOnly} />
             {data.gear.includes("기타") && <Row label="기타 보호구"><Text value={data.gearEtc} onChange={(v) => update("gearEtc", v)} readOnly={isReadOnly} /></Row>}
           </Section>
+          </>)}
 
           {/* ②~⑨ : 위에서 선택한 작업형태의 체크리스트만 노출 */}
-          {data.workTypes.length === 0 && !isReadOnly && (
+          {!templateMode && data.workTypes.length === 0 && !isReadOnly && (
             <p className="muted" style={{ padding: "0 4px" }}>※ 위 <b>작업형태</b>를 먼저 선택하면 해당 작업의 체크리스트가 나타납니다.</p>
           )}
 
@@ -370,6 +380,7 @@ function FillInner() {
             </Section>
           )}
 
+          {!templateMode && (
           <Section title="⑪ 에너지원 안전잠금장치" id="sec-energy">
             <RadioGroup
               options={[{ v: "none", label: "해당사항 없음" }, { v: "general", label: "②항 에너지원차단·표찰부착 체크 시 조치사항 기재" }]}
@@ -396,6 +407,7 @@ function FillInner() {
               </>
             )}
           </Section>
+          )}
 
           <Section title="⑫ Work Sheet (JSA)" id="sec-jsa">
             <div className="tworow">
@@ -413,6 +425,7 @@ function FillInner() {
             />
           </Section>
 
+          {!templateMode && (<>
           <Section title="환경안전 교육실시 및 서약" id="sec-edu">
             <p className="muted">대표자가 함께 작업하는 인원을 등록하고, 각자 직접 서명합니다. (최대 18명)</p>
             <div className="tworow">
@@ -474,6 +487,7 @@ function FillInner() {
               </div>
             </Row>
           </Section>
+          </>)}
         </div>
 
         {showPreview && (
