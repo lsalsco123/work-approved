@@ -229,8 +229,13 @@ function FillInner() {
               .map((wt) => ({ label: WORK_TYPES.find((w) => w.v === wt)?.label.split(" (")[0] ?? wt, items: attachCfgs[wt]?.items ?? [] }))
               .filter((x) => x.items.length > 0)
               .map((x) => `${x.label}: ${x.items.join(", ")}`);
-            // 업로드 숨김이고 기존 첨부도 없으면 섹션 자체를 표시하지 않음
-            if (!uploadVisible && attachments.length === 0) return null;
+            // 관리자가 미리 올려둔 예시 양식(선택한 작업형태별)
+            const formFiles = rel
+              .map((wt) => ({ label: WORK_TYPES.find((w) => w.v === wt)?.label.split(" (")[0] ?? wt, file: attachCfgs[wt]?.formFile }))
+              .filter((x): x is { label: string; file: NonNullable<typeof x.file> } => !!x.file)
+              .map((x) => ({ label: x.label, name: x.file.name, url: x.file.url }));
+            // 업로드 숨김이고, 기존 첨부·예시양식도 없으면 섹션 자체를 표시하지 않음
+            if (!uploadVisible && attachments.length === 0 && formFiles.length === 0) return null;
             return (
               <Section title="📎 첨부파일">
                 <Attachments
@@ -242,6 +247,7 @@ function FillInner() {
                   onChange={setAttachments}
                   requiredDocs={docLines}
                   uploadEnabled={uploadVisible}
+                  formFiles={formFiles}
                 />
               </Section>
             );

@@ -277,5 +277,25 @@ exports.adminSetRole = onCall(async (request) => {
     }
   }
   await db().collection("users").doc(uid).set(patch, {merge: true});
+  // 시스템관리자 여부를 커스텀 클레임에도 반영 → Storage 규칙이 토큰만으로 검사 가능.
+  // (대상 사용자는 다음 토큰 갱신/재로그인 시 클레임이 적용된다.)
+  try {
+    await auth().setCustomUserClaims(uid, {admin: role === "admin"});
+  } catch (e) {/* 클레임 설정 실패는 역할 저장 자체를 막지 않음 */}
   return {ok: true, ...patch};
+});
+
+/**
+ * 본인 커스텀 클레임(admin) 동기화 — 호출자의 Firestore users/{uid}.role 을 읽어
+ * admin 여부를 토큰 클레임에 반영한다. 기존 관리자가 재지정 없이 클레임을 받도록 하는 셀프 경로.
+ * 안전성: 게스트가 호출해도 본인 Firestore role 은 스스로 admin 으로 바꿀 수 없으므로(rules),
+ * 이 함수는 이미 부여된 역할만 클레임에 복제할 뿐 권한 상승 경로가 아니다.
+ */
+exports.syncAdminClaim = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+  const snap = await db().collection("users").doc(uid).get();
+  const isAdmin = snap.exists && snap.data().role === "admin";
+  await auth().setCustomUserClaims(uid, {admin: isAdmin});
+  return {admin: isAdmin};
 });

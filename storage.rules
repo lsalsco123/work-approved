@@ -16,6 +16,18 @@ service firebase.storage {
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
+    // 작업형태별 사전 예시 양식: formTemplates/{workType}/{fileName}
+    //  - 읽기: 로그인한 모든 사용자(업체가 작성화면에서 예시양식 다운로드)
+    //  - 쓰기/삭제: admin 커스텀 클레임 보유자(시스템관리자)만. 25MB 이하.
+    //  ※ Storage rules 는 Firestore 를 참조 못 하므로 role 대신 토큰 클레임으로 관리자를 강제한다.
+    match /formTemplates/{workType}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.auth.token.admin == true
+                   && (request.resource == null
+                       || request.resource.size < 25 * 1024 * 1024);
+    }
+
     // 그 외 경로는 모두 차단
     match /{allPaths=**} {
       allow read, write: if false;
