@@ -69,11 +69,12 @@ function MyDashboard() {
   const [fetching, setFetching] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  // 게스트 전용. 미로그인→로그인, 관리자→관리자 화면.
+  // 게스트 전용. 미로그인→로그인, 관리자→관리자 화면, 담당자/공장장→관리자 결재함.
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace("/login");
     else if (user.role === "admin") router.replace("/admin");
+    else if (user.role === "manager") router.replace("/manager");
   }, [user, loading, router]);
 
   useEffect(() => {
@@ -87,7 +88,7 @@ function MyDashboard() {
     })();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (loading || !user || user.role === "admin") {
+  if (loading || !user || user.role !== "guest") {
     return <div className="loading"><span className="spinner" />불러오는 중…</div>;
   }
 
