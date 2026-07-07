@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { usePermit } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { confirmableItems } from "@/lib/form";
-import { emptyPermit, PermitData } from "@/lib/types";
+import { PermitData } from "@/lib/types";
 import {
   savePermit, submitPermit, getPermit, saveAdminFields, completePermit, chainAction,
   PermitStatus, ChainStage, PermitChain,
@@ -325,27 +325,29 @@ export function useFillPermit() {
     }
   };
 
-  // 게스트가 예시 양식 선택 → 폼에 적용
+  // 게스트가 예시 양식 선택 → '작업형태별 체크항목 카드'와 'Work Sheet(JSA) 카드'만 채운다.
+  // 기본정보·안전보호구·공정·서명 등 나머지 입력은 그대로 유지(예시가 덮어쓰지 않음).
   const applyTemplate = (id: string) => {
     const t = templates.find((x) => x.id === id);
     if (!t) return;
-    if (window.confirm(`"${t.name}" 예시를 불러올까요? 현재 입력 내용을 덮어씁니다.`)) {
-      const blank = emptyPermit();
-      setData({
-        ...blank,
-        ...t.data,
-        company: user?.company || data.company,
-        applicantDept: user?.company || data.company,
-        emergencyContact: t.data.emergencyContact === "010-0000-0000" ? "" : t.data.emergencyContact,
-        riskParticipants: t.data.riskParticipants === "홍길동"
-          ? "홍길동, 김민수, 김철수, 김박수"
-          : t.data.riskParticipants,
-        applicantDate: "",
-        applicantSign: "",
-        eduSigners: (t.data.eduSigners || []).map((signer) => ({ ...signer, sign: "" })),
-        admin: blank.admin,
-      });
-    }
+    if (!window.confirm(`"${t.name}" 예시를 불러올까요? 작업형태 체크항목과 위험성평가(JSA)만 채워집니다.`)) return;
+    const td = t.data;
+    setData((d) => ({
+      ...d,
+      // 작업형태 선택 + 작업형태별 체크항목 카드
+      workTypes: td.workTypes ?? [],
+      workTypeEtc: td.workTypeEtc ?? "",
+      general: td.general ?? [],
+      hot: td.hot ?? [],
+      confined: td.confined ?? [],
+      electrical: td.electrical ?? [],
+      elevated: td.elevated ?? [],
+      excavation: td.excavation ?? [],
+      heavy: td.heavy ?? [],
+      radiation: td.radiation ?? [],
+      // Work Sheet(JSA) 카드 (위험성평가 항목만)
+      jsa: td.jsa ?? [],
+    }));
   };
 
   // 관리자 확인(○ → ●) 토글/일괄/저장
