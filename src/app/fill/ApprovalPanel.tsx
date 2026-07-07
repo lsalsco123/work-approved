@@ -51,10 +51,10 @@ export default function ApprovalPanel({
   const items = confirmableItems(data);
 
   return (
-    <div style={{ border: "1px solid #c7d2fe", borderRadius: 10, padding: 14, marginBottom: 14, background: "#eef2ff" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-        <strong style={{ fontSize: 14, color: "#3730a3" }}>결재</strong>
-        <span style={{ fontSize: 12, color: "#475569" }}>
+    <div className="panel panel-approval">
+      <div className="panel-head">
+        <span className="panel-title">결재</span>
+        <span className="panel-sub">
           {["manager", "safety", "factory"].map((s) => STAGE_LABEL[s] + (stageNow === s ? " ◀" : "")).join("  →  ")}
         </span>
         {isSys && <span style={{ fontSize: 11, color: "#94a3b8" }}>(시스템관리자: 모든 단계 처리 가능)</span>}
@@ -62,11 +62,11 @@ export default function ApprovalPanel({
 
       {/* 단계별 결재 코멘트 이력 */}
       {(chain?.manager || chain?.safety || chain?.factory || chain?.rejected) && (
-        <div style={{ fontSize: 12, color: "#475569", marginBottom: 10, display: "flex", flexDirection: "column", gap: 3 }}>
+        <div className="approval-history">
           {chain?.manager && <div>· 담당자 {chain.manager.by}: {chain.manager.comment || "(의견 없음)"}</div>}
           {chain?.safety && <div>· 환경안전 {chain.safety.by}: {chain.safety.comment || "(의견 없음)"}</div>}
           {chain?.factory && <div>· 공장장 {chain.factory.by}: {chain.factory.comment || "(의견 없음)"}</div>}
-          {chain?.rejected && <div style={{ color: "#dc2626" }}>· 반려({STAGE_LABEL[chain.rejected.stage || ""] || chain.rejected.stage}) {chain.rejected.by}: {chain.rejected.reason}</div>}
+          {chain?.rejected && <div className="rejected">· 반려({STAGE_LABEL[chain.rejected.stage || ""] || chain.rejected.stage}) {chain.rejected.by}: {chain.rejected.reason}</div>}
         </div>
       )}
 
@@ -87,14 +87,14 @@ export default function ApprovalPanel({
             <span style={{ fontSize: 12, color: "#64748b" }}>업체 체크 확인(●)</span>
             <button className="mini" onClick={confirmAll}>일괄</button>
             <button className="mini" onClick={clearConfirm}>해제</button>
-            <button className="mini" onClick={handleSaveConfirm} disabled={saving} style={{ background: "#4f46e5", color: "#fff" }}>저장</button>
+            <button className="mini btn-accent" onClick={handleSaveConfirm} disabled={saving}>저장</button>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {items.map((it) => {
               const on = data.confirmed.includes(it.ref);
               return (
-                <button key={it.ref} onClick={() => toggleConfirm(it.ref)} style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${on ? "#6366f1" : "#cbd5e1"}`, background: on ? "#e0e7ff" : "#fff", borderRadius: 16, padding: "4px 10px", fontSize: 12, cursor: "pointer", color: on ? "#3730a3" : "#475569" }}>
-                  <span style={{ fontSize: 14 }}>{on ? "●" : "○"}</span>{it.label}
+                <button key={it.ref} onClick={() => toggleConfirm(it.ref)} className={`chip-toggle${on ? " on" : ""}`}>
+                  <span className="dot">{on ? "●" : "○"}</span>{it.label}
                 </button>
               );
             })}

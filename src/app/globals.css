@@ -394,6 +394,28 @@ button.btn-accent:disabled { background: #94a3b8; cursor: not-allowed; }
 .empty-rich .ico { width: 44px; height: 44px; opacity: .5; }
 .empty-rich .t { font-size: 14px; color: #64748b; font-weight: 600; }
 
+/* 결재 패널 — 앱 토큰(네이비/앰버) 기준으로 통일, 인디고 색상 이탈 방지 */
+.panel-approval { border-left: 3px solid var(--fl-navy-600); }
+.panel-approval .panel-title { color: var(--fl-navy-800); }
+.approval-history { font-size: 12px; color: var(--fl-muted); margin-bottom: 10px; display: flex; flex-direction: column; gap: 3px; }
+.approval-history .rejected { color: #dc2626; }
+.chip-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid #cbd5e1; background: #fff; border-radius: 16px;
+  padding: 4px 10px; font-size: 12px; cursor: pointer; color: #475569;
+  transition: background .15s ease, border-color .15s ease, transform .05s ease;
+}
+.chip-toggle:hover { border-color: var(--fl-navy-600); background: #f8fafc; }
+.chip-toggle:active { transform: translateY(1px); }
+.chip-toggle.on { border-color: var(--fl-navy-600); background: #eef4fb; color: var(--fl-navy-800); }
+.chip-toggle .dot { font-size: 14px; }
+
+/* 서명 썸네일 — 토큰 기반, 세 곳(필드/교육참여자/신청자)에서 재사용 */
+.sig-thumb    { height: 38px; width: 110px; object-fit: contain; border: 1px solid var(--fl-border); border-radius: var(--radius-sm); background: #fff; }
+.sig-thumb-sm { height: 34px; width: 90px;  object-fit: contain; border: 1px solid var(--fl-border); border-radius: var(--radius-sm); background: #fff; }
+.sig-thumb-lg { height: 40px; width: 120px; object-fit: contain; border: 1px solid var(--fl-border); border-radius: var(--radius-sm); background: #fff; }
+.sig-empty    { font-size: 12px; color: #94a3b8; }
+
 /* ===== Print ===== */
 @media print {
   @page { size: A4 landscape; margin: 0; }

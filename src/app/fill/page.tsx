@@ -47,12 +47,12 @@ function FillInner() {
 
   if (loadError) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "#f8fafc" }}>
-        <div style={{ maxWidth: 420, textAlign: "center", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 32 }}>
-          <h1 style={{ margin: "0 0 8px", fontSize: 18, color: "#0a2240" }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div className="panel" style={{ maxWidth: 420, textAlign: "center" }}>
+          <h1 style={{ margin: "0 0 12px", fontSize: 18, color: "var(--fl-navy-900)" }}>
             {loadError === "notfound" ? "허가서를 찾을 수 없습니다" : "허가서를 불러오지 못했습니다"}
           </h1>
-          <p style={{ margin: "0 0 20px", fontSize: 14, color: "#64748b" }}>
+          <p className="note note-error" style={{ justifyContent: "center", marginBottom: 20 }}>
             {loadError === "notfound"
               ? "요청하신 허가서가 존재하지 않거나 접근 권한이 없습니다."
               : "조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."}
@@ -426,8 +426,8 @@ function FillInner() {
                     onChange={(e) => updateSignerName(i, e.target.value)} disabled={isReadOnly}
                   />
                   {s.sign
-                    ? <img src={s.sign} alt="서명" style={{ height: 34, width: 90, objectFit: "contain", border: "1px solid #e2e8f0", borderRadius: 4, background: "#fff" }} />
-                    : <span style={{ fontSize: 12, color: "#94a3b8", width: 90, textAlign: "center" }}>미서명</span>}
+                    ? <img src={s.sign} alt="서명" className="sig-thumb-sm" />
+                    : <span className="sig-empty" style={{ width: 90, textAlign: "center" }}>미서명</span>}
                   {!isReadOnly && (
                     <>
                       <button className="mini" onClick={() => setSignatureTarget({ kind: "education", index: i })}>{s.sign ? "서명 수정" : "서명"}</button>
@@ -458,8 +458,8 @@ function FillInner() {
             <Row label="신청자 서명" required>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 {data.applicantSign
-                  ? <img src={data.applicantSign} alt="신청자 서명" style={{ height: 40, width: 120, objectFit: "contain", border: "1px solid #e2e8f0", borderRadius: 4, background: "#fff" }} />
-                  : <span style={{ fontSize: 12, color: "#94a3b8" }}>미서명</span>}
+                  ? <img src={data.applicantSign} alt="신청자 서명" className="sig-thumb-lg" />
+                  : <span className="sig-empty">미서명</span>}
                 {!isReadOnly && (
                   <button className="mini" onClick={() => setSignatureTarget({ kind: "applicant" })}>
                     {data.applicantSign ? "서명 수정" : "서명"}

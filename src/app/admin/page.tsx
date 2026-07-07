@@ -325,6 +325,95 @@ export default function AdminPage() {
       </header>
 
       <div className="page">
+        <div style={{ marginBottom: 16 }}>
+          <div className="page-head">
+            <h2>접수 현황</h2>
+            <div className="grow" />
+            <button className="mini" onClick={fetchAll} disabled={fetching}>↻ 새로고침</button>
+          </div>
+          <div className="kpi-row">
+            {([
+              { k: "submitted", label: "제출됨", color: "#b45309" },
+              { k: "approved", label: "승인완료", color: "#15803d" },
+              { k: "rejected", label: "반려됨", color: "#dc2626" },
+              { k: "completed", label: "완료", color: "#475569" },
+            ] as { k: PermitStatus; label: string; color: string }[]).map((c) => (
+              <button
+                key={c.k}
+                className={`kpi-card ${filter === c.k ? "on" : ""}`}
+                style={{ borderTopColor: c.color }}
+                onClick={() => setFilter(c.k)}
+                aria-pressed={filter === c.k}
+              >
+                <span className="kpi-num">{count(c.k)}</span>
+                <span className="kpi-label">{c.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <div className="rolesw">
+              {TABS.map((t) => (
+                <button key={t.key} className={filter === t.key ? "on" : ""} onClick={() => setFilter(t.key)}>
+                  {t.label}
+                  {t.key !== "all" ? ` (${count(t.key as PermitStatus)})` : ` (${permits.length})`}
+                </button>
+              ))}
+            </div>
+            <input className="inp" style={{ width: 200 }} placeholder="업체명 / 작업내용 검색"
+              value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+
+          {fetching ? (
+            <div className="loading"><span className="spinner" />불러오는 중…</div>
+          ) : loadError ? (
+            <div style={{ padding: 32, textAlign: "center", color: "#b91c1c" }}>
+              목록을 불러오지 못했습니다.
+              <div style={{ marginTop: 10 }}>
+                <button className="mini" onClick={fetchAll}>다시 시도</button>
+              </div>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="empty-state">해당 항목이 없습니다.</div>
+          ) : (
+            <SheetTable columns={permitCols} rows={filtered} rowKey={(p) => p.id} />
+          )}
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <div className="panel" style={{ marginBottom: 0 }}>
+            <div className="panel-head">
+              <span className="panel-title" style={{ color: "#6d28d9" }}>예시 양식 관리</span>
+              <span className="panel-sub">작업형태별로 예시 양식(작성/수정)과 첨부 안내(필요 서류·업로드 칸 표시)를 설정합니다. 업체는 선택한 작업형태에 따라 안내를 보게 됩니다.</span>
+              <div className="grow" />
+              <button className="mini" disabled={tplBusy} onClick={seedDefaults}>{tplBusy ? "생성 중…" : "기본 예시 일괄 생성"}</button>
+            </div>
+            <SheetTable columns={tplCols} rows={tplTypeRows} rowKey={(w) => w.v} />
+            {attachWT && (
+              <div style={{ marginTop: 12, padding: 12, border: "1px solid #e2e8f0", borderRadius: 8, background: "#fbfcfe" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+                  <b style={{ fontSize: 13 }}>{wtLabel(attachWT)} — 첨부 안내 설정</b>
+                  <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                    <input type="checkbox" checked={attachUpload} onChange={(e) => setAttachUpload(e.target.checked)} />
+                    첨부 업로드 칸 표시
+                  </label>
+                  <div className="grow" />
+                  <button className="mini btn-accent" disabled={attachBusy} onClick={saveAttach}>{attachBusy ? "저장 중…" : "저장"}</button>
+                  <button className="mini" disabled={attachBusy} onClick={() => setAttachWT("")}>닫기</button>
+                </div>
+                <textarea
+                  className="inp"
+                  style={{ width: "100%", minHeight: 110, resize: "vertical", fontFamily: "inherit", lineHeight: 1.6 }}
+                  placeholder={"필요 서류를 한 줄에 하나씩 (또는 쉼표로 구분)\n예)\n작업계획서\nMSDS(물질안전보건자료)\n보험증권 사본"}
+                  value={attachText}
+                  onChange={(e) => setAttachText(e.target.value)}
+                />
+                <p className="sheet-hint" style={{ marginTop: 6 }}>“업로드 칸 표시”를 끄면 해당 작업형태에서는 업체에게 첨부 업로드 칸이 보이지 않습니다.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* 업체(외주) 계정 관리 — 업체 셀프 회원가입 / 관리자 승인·차단·비번관리 */}
         <div className="panel">
           <div className="panel-head">
@@ -376,93 +465,6 @@ export default function AdminPage() {
             </div>
           )}
         </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <div className="panel" style={{ marginBottom: 0 }}>
-            <div className="panel-head">
-              <span className="panel-title" style={{ color: "#6d28d9" }}>예시 양식 관리</span>
-              <span className="panel-sub">작업형태별로 예시 양식(작성/수정)과 첨부 안내(필요 서류·업로드 칸 표시)를 설정합니다. 업체는 선택한 작업형태에 따라 안내를 보게 됩니다.</span>
-              <div className="grow" />
-              <button className="mini" disabled={tplBusy} onClick={seedDefaults}>{tplBusy ? "생성 중…" : "기본 예시 일괄 생성"}</button>
-            </div>
-            <SheetTable columns={tplCols} rows={tplTypeRows} rowKey={(w) => w.v} />
-            {attachWT && (
-              <div style={{ marginTop: 12, padding: 12, border: "1px solid #e2e8f0", borderRadius: 8, background: "#fbfcfe" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
-                  <b style={{ fontSize: 13 }}>{wtLabel(attachWT)} — 첨부 안내 설정</b>
-                  <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                    <input type="checkbox" checked={attachUpload} onChange={(e) => setAttachUpload(e.target.checked)} />
-                    첨부 업로드 칸 표시
-                  </label>
-                  <div className="grow" />
-                  <button className="mini btn-accent" disabled={attachBusy} onClick={saveAttach}>{attachBusy ? "저장 중…" : "저장"}</button>
-                  <button className="mini" disabled={attachBusy} onClick={() => setAttachWT("")}>닫기</button>
-                </div>
-                <textarea
-                  className="inp"
-                  style={{ width: "100%", minHeight: 110, resize: "vertical", fontFamily: "inherit", lineHeight: 1.6 }}
-                  placeholder={"필요 서류를 한 줄에 하나씩 (또는 쉼표로 구분)\n예)\n작업계획서\nMSDS(물질안전보건자료)\n보험증권 사본"}
-                  value={attachText}
-                  onChange={(e) => setAttachText(e.target.value)}
-                />
-                <p className="sheet-hint" style={{ marginTop: 6 }}>“업로드 칸 표시”를 끄면 해당 작업형태에서는 업체에게 첨부 업로드 칸이 보이지 않습니다.</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="page-head">
-          <h2>접수 현황</h2>
-          <div className="grow" />
-          <button className="mini" onClick={fetchAll} disabled={fetching}>↻ 새로고침</button>
-        </div>
-        <div className="kpi-row">
-          {([
-            { k: "submitted", label: "제출됨", color: "#b45309" },
-            { k: "approved", label: "승인완료", color: "#15803d" },
-            { k: "rejected", label: "반려됨", color: "#dc2626" },
-            { k: "completed", label: "완료", color: "#475569" },
-          ] as { k: PermitStatus; label: string; color: string }[]).map((c) => (
-            <button
-              key={c.k}
-              className={`kpi-card ${filter === c.k ? "on" : ""}`}
-              style={{ borderTopColor: c.color }}
-              onClick={() => setFilter(c.k)}
-              aria-pressed={filter === c.k}
-            >
-              <span className="kpi-num">{count(c.k)}</span>
-              <span className="kpi-label">{c.label}</span>
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <div className="rolesw">
-            {TABS.map((t) => (
-              <button key={t.key} className={filter === t.key ? "on" : ""} onClick={() => setFilter(t.key)}>
-                {t.label}
-                {t.key !== "all" ? ` (${count(t.key as PermitStatus)})` : ` (${permits.length})`}
-              </button>
-            ))}
-          </div>
-          <input className="inp" style={{ width: 200 }} placeholder="업체명 / 작업내용 검색"
-            value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-
-        {fetching ? (
-          <div className="loading"><span className="spinner" />불러오는 중…</div>
-        ) : loadError ? (
-          <div style={{ padding: 32, textAlign: "center", color: "#b91c1c" }}>
-            목록을 불러오지 못했습니다.
-            <div style={{ marginTop: 10 }}>
-              <button className="mini" onClick={fetchAll}>다시 시도</button>
-            </div>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="empty-state">해당 항목이 없습니다.</div>
-        ) : (
-          <SheetTable columns={permitCols} rows={filtered} rowKey={(p) => p.id} />
-        )}
       </div>
       <BuiltBy />
     </div>
