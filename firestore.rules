@@ -2,20 +2,32 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function myUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // 계정이 차단되지 않았는가. status 없는 legacy 계정은 grace 로 통과.
+    function accountActive() {
+      return request.auth != null && myUser().get('status', 'active') == 'active';
+    }
+
     function isAdmin() {
       return request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+        myUser().role == 'admin' && accountActive();
     }
 
     // 요청자(게스트)가 승인된 활성 계정인가. status 없는 legacy 계정은 grace 로 통과.
     function requesterActive() {
-      return request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'active') == 'active';
+      return request.auth != null && accountActive();
     }
 
-    function myUser() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    // 게스트 계정은 이메일 인증을 강제(서버측). 레거시 가짜 도메인 계정 등 게스트가 아닌
+    // 역할은 클라이언트 정책(AccessGate)과 동일하게 이 검사를 면제한다.
+    function requesterVerified() {
+      return request.auth != null &&
+        (myUser().get('role', '') != 'guest' || request.auth.token.get('email_verified', false) == true);
     }
+
     // 관리자(manager)가 이 permit 의 결재 라인에 속하는가.
     //  - requester(담당자): 자신이 담당자(data.manager)인 건
     //  - factory(공장장): 자기 차례(stage=factory) 또는 완료(approved/completed)된 건만
@@ -23,6 +35,7 @@ service cloud.firestore {
     function isChainManager(permit) {
       return request.auth != null
         && myUser().get('role', '') == 'manager'
+        && accountActive()
         && (
           (myUser().get('managerKind', '') == 'factory'
             && (permit.data.get('stage', '') == 'factory'
@@ -30,6 +43,26 @@ service cloud.firestore {
           || (myUser().get('managerKind', '') == 'requester'
               && myUser().get('managerName', '') == permit.data.get('data', {}).get('manager', ''))
         );
+    }
+
+    // 결재 관련 protected 필드(발급/검토/승인 서명·메타) — 소유자(업체)는 절대 변경 불가.
+    // chainAction(Cloud Function, admin SDK)만 이 필드들을 쓴다.
+    function permitAdminFieldsLocked() {
+      return request.resource.data.get('data', {}).get('admin', {}) == resource.data.get('data', {}).get('admin', {})
+        && request.resource.data.get('data', {}).get('hotFireManager', '') == resource.data.get('data', {}).get('hotFireManager', '')
+        && request.resource.data.get('data', {}).get('hotFireManagerSign', '') == resource.data.get('data', {}).get('hotFireManagerSign', '');
+    }
+
+    // 소유자가 바꿀 수 있는 stage/chain 전이: 같은 상태로 저장(둘 다 불변) 이거나,
+    // draft/rejected → submitted 로 제출할 때만 stage='manager' + chain 초기화 허용.
+    // (그 외 단계 전이는 전부 chainAction 전용 — admin SDK 는 rules 를 우회하므로 여기선 소유자만 막으면 된다.)
+    function permitSubmitTransitionOk() {
+      return (request.resource.data.status == resource.data.status
+                && request.resource.data.get('stage', null) == resource.data.get('stage', null)
+                && request.resource.data.get('chain', {}) == resource.data.get('chain', {}))
+          || (request.resource.data.status == 'submitted'
+                && request.resource.data.get('stage', '') == 'manager'
+                && request.resource.data.get('chain', {}) == {});
     }
 
     // 사용자 프로필
@@ -58,22 +91,28 @@ service cloud.firestore {
       allow read: if isAdmin() || isOwner()
         || (isChainManager(resource) && resource.data.status != 'draft');
 
-      // 생성: 본인 소유 + 최초 상태는 draft 로 고정 + 승인된 활성 계정만
+      // 생성: 본인 소유 + 최초 상태는 draft 로 고정 + 승인된 활성 계정 + (게스트는) 이메일 인증 필요
       allow create: if request.auth != null
         && requesterActive()
+        && requesterVerified()
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.status == 'draft';
 
       // 수정:
       //  - 관리자: 전체 허용 (승인/반려/완료 등)
       //  - 작성자 본인: draft/rejected 상태일 때만, createdBy 변경 불가,
-      //    상태는 draft/submitted 로만 이동 가능 (approved/completed 자가 설정 차단)
+      //    상태는 draft/submitted 로만 이동 가능(approved/completed 자가 설정 차단),
+      //    결재 서명·메타(data.admin/hotFireManager*)는 절대 변경 불가,
+      //    stage/chain 은 제출 전이(→submitted, stage='manager') 외에는 불변(단계 건너뛰기 차단)
       allow update: if isAdmin()
         || (isOwner()
             && requesterActive()
+            && requesterVerified()
             && resource.data.status in ['draft', 'rejected']
             && request.resource.data.createdBy == resource.data.createdBy
-            && request.resource.data.status in ['draft', 'submitted']);
+            && request.resource.data.status in ['draft', 'submitted']
+            && permitAdminFieldsLocked()
+            && permitSubmitTransitionOk());
 
       allow delete: if isAdmin();
     }

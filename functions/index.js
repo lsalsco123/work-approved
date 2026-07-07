@@ -25,8 +25,12 @@ async function assertAdmin(request) {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
   const snap = await db().collection("users").doc(uid).get();
-  if (!snap.exists || snap.data().role !== "admin") {
+  const d = snap.exists ? snap.data() : {};
+  if (d.role !== "admin") {
     throw new HttpsError("permission-denied", "관리자 권한이 필요합니다.");
+  }
+  if ((d.status || "active") === "blocked") {
+    throw new HttpsError("permission-denied", "차단된 계정입니다.");
   }
   return uid;
 }
@@ -150,6 +154,9 @@ exports.chainAction = onCall(async (request) => {
   // 호출자 역할은 트랜잭션 중 불변이므로 밖에서 1회 조회
   const usnap = await db().collection("users").doc(callerUid).get();
   const u = usnap.exists ? usnap.data() : {};
+  if ((u.status || "active") === "blocked") {
+    throw new HttpsError("permission-denied", "차단된 계정입니다.");
+  }
   const role = u.role || "guest";
   const isSys = role === "admin";
   const callerName = u.managerName || u.name ||
@@ -276,12 +283,23 @@ exports.adminSetRole = onCall(async (request) => {
       throw new HttpsError("invalid-argument", "담당자는 담당자명을 지정해야 합니다.");
     }
   }
+  // 강등 여부(admin → 그 외)를 쓰기 전에 미리 확인해 둔다 — 토큰 revoke 판단용.
+  const beforeSnap = await db().collection("users").doc(uid).get();
+  const wasAdmin = beforeSnap.exists && beforeSnap.data().role === "admin";
+
   await db().collection("users").doc(uid).set(patch, {merge: true});
   // 시스템관리자 여부를 커스텀 클레임에도 반영 → Storage 규칙이 토큰만으로 검사 가능.
-  // (대상 사용자는 다음 토큰 갱신/재로그인 시 클레임이 적용된다.)
+  // (승격은 다음 토큰 갱신/재로그인 시 클레임이 적용된다 — syncAdminClaim 으로 즉시 반영 가능.)
   try {
     await auth().setCustomUserClaims(uid, {admin: role === "admin"});
   } catch (e) {/* 클레임 설정 실패는 역할 저장 자체를 막지 않음 */}
+  // admin 에서 강등되는 경우, 기존에 발급된 ID 토큰(admin 클레임 포함)을 즉시 무효화.
+  // 그대로 두면 토큰 만료 전까지 최대 1시간 formTemplates Storage 쓰기 권한이 남는다.
+  if (wasAdmin && role !== "admin") {
+    try {
+      await auth().revokeRefreshTokens(uid);
+    } catch (e) {/* Auth 사용자 없음 등은 무시 */}
+  }
   return {ok: true, ...patch};
 });
 
