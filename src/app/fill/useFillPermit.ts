@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { usePermit } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { confirmableItems, WORK_TYPES } from "@/lib/form";
-import { PermitData } from "@/lib/types";
+import { PermitData, JsaRow } from "@/lib/types";
 import {
   savePermit, submitPermit, getPermit, saveAdminFields, completePermit, chainAction,
   PermitStatus, ChainStage, PermitChain,
@@ -147,18 +147,36 @@ export function useFillPermit() {
   }, [templateMode, loaded, cloudLoaded, templateWorkType, isReadOnly, data.workTypes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // JSA 행을 선택한 작업형태에 1:1 자동 동기화(작업형태별 1행). 기존 내용은 workType/step 으로 매칭해 보존.
+  // workType 태그가 없는 레거시 행(과거 라벨 표기가 달라 step 이 안 맞는 경우 포함)은
+  // 순서대로 소비해 최대한 내용을 보존한다 — 매칭 실패로 입력했던 위험성평가가 사라지지 않도록.
   useEffect(() => {
     if (isReadOnly) return;
     setData((d) => {
       const sel = WORK_TYPES.filter((w) => w.v !== "etc" && d.workTypes.includes(w.v));
       const labelOf = (w: { label: string }) => w.label.split(" (")[0];
+      const byWorkType = new Map<string, number>();
+      d.jsa.forEach((r, i) => { if (r.workType && !byWorkType.has(r.workType)) byWorkType.set(r.workType, i); });
+      const legacyPool = d.jsa.map((r, i) => ({ r, i })).filter(({ r }) => !r.workType);
+      const usedIdx = new Set<number>();
+      let legacyCursor = 0;
       const next = sel.map((w) => {
         const label = labelOf(w);
-        const found = d.jsa.find((r) => r.workType === w.v)
-          ?? d.jsa.find((r) => !r.workType && r.step === label);
-        const bs = found ?? { step: label, workType: w.v, hazard: "", frequency: "" as const, severity: "" as const, current: "", reduction: "" };
-        if (bs.workType === w.v && bs.step === label) return bs;
-        return { ...bs, workType: w.v, step: label };
+        let src: JsaRow | undefined;
+        const wtIdx = byWorkType.get(w.v);
+        if (wtIdx !== undefined) {
+          src = d.jsa[wtIdx]; usedIdx.add(wtIdx);
+        } else {
+          const exact = legacyPool.find(({ r, i }) => !usedIdx.has(i) && r.step === label);
+          if (exact) { src = exact.r; usedIdx.add(exact.i); } else {
+            while (legacyCursor < legacyPool.length && usedIdx.has(legacyPool[legacyCursor].i)) legacyCursor++;
+            if (legacyCursor < legacyPool.length) {
+              src = legacyPool[legacyCursor].r; usedIdx.add(legacyPool[legacyCursor].i); legacyCursor++;
+            }
+          }
+        }
+        const base = src ?? { step: label, workType: w.v, hazard: "", frequency: "" as const, severity: "" as const, current: "", reduction: "" };
+        if (base.workType === w.v && base.step === label) return base;
+        return { ...base, workType: w.v, step: label };
       });
       const same = next.length === d.jsa.length && next.every((r, i) => r === d.jsa[i]);
       return same ? d : { ...d, jsa: next };
