@@ -22,17 +22,21 @@ export interface CompanyAccount {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_RE = /^[0-9-]{9,14}$/;
 
 // 업체 셀프 회원가입: 실제 이메일로 가입 → 인증메일 발송 → users 문서(status=pending) 작성.
 // 가입 직후 본인 세션으로 로그인되지만, 이메일 인증 + 관리자 승인 전까지 게이트에서 차단된다.
+// consentAgreed: 개인정보 수집·이용 동의(필수) — 동의 없이는 계정을 만들 수 없다.
 export async function signUpCompany(
-  email: string, company: string, name: string, password: string
+  email: string, company: string, name: string, phone: string, password: string, consentAgreed: boolean
 ): Promise<void> {
   const mail = email.trim().toLowerCase();
   if (!EMAIL_RE.test(mail)) throw new Error("올바른 이메일 주소를 입력하세요.");
   if (!company.trim()) throw new Error("업체명(소속)을 입력하세요.");
   if (!name.trim()) throw new Error("이름을 입력하세요.");
+  if (!PHONE_RE.test(phone.trim())) throw new Error("올바른 전화번호를 입력하세요.");
   if (password.length < 6) throw new Error("비밀번호는 6자 이상이어야 합니다.");
+  if (!consentAgreed) throw new Error("개인정보 수집·이용에 동의해야 가입할 수 있습니다.");
 
   const cred = await createUserWithEmailAndPassword(auth, mail, password);
   try { await sendEmailVerification(cred.user); } catch { /* 발송 실패해도 가입은 유지, 재발송 가능 */ }
@@ -41,8 +45,10 @@ export async function signUpCompany(
     role: "guest",
     company: company.trim(), // 업체명(또는 LS알스코)
     name: name.trim(),       // 가입자 이름 — 업체명과 별개로 관리
+    phone: phone.trim(),
     status: "pending",
     createdAt: new Date().toISOString(),
+    privacyConsentedAt: new Date().toISOString(),
   });
 }
 
