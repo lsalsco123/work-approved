@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth";
 import BuiltBy from "@/components/BuiltBy";
 import { ProfileErrorRetry } from "@/components/AccessGate";
 import {
-  listAllPermits, PermitRecord, PermitStatus,
+  listAllPermits, deletePermit, PermitRecord, PermitStatus,
 } from "@/lib/permits";
 import { listTemplates, deleteTemplate, createTemplate, PermitTemplate } from "@/lib/templates";
 import { listCompanyAccounts, adminApprove, adminDeleteAccount, adminSetPassword, adminSetRole, adminSetProfile, sendResetEmail, CompanyAccount } from "@/lib/accounts";
@@ -40,6 +40,19 @@ function tsToStr(ts: unknown): string {
     + " " + d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 }
 
+// YYYY-MM-DD (로컬 기준) — <input type="date"> 값 및 날짜 범위 비교용
+function dateOnly(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function tsToDateOnly(ts: unknown): string {
+  if (!ts) return "";
+  const d = (ts as { toDate?: () => Date }).toDate?.() ?? new Date(ts as string);
+  return dateOnly(d);
+}
+
 export default function AdminPage() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
@@ -48,6 +61,14 @@ export default function AdminPage() {
   const [loadError, setLoadError] = useState(false);
   const [filter, setFilter] = useState<"all" | PermitStatus>("submitted");
   const [search, setSearch] = useState("");
+  // 접수 현황 날짜 범위 — 제출일시/작업일자 각각 독립 지정, 둘 다 또는 하나만 적용 가능.
+  // 기본값: 작업일자는 미지정, 제출일시는 당월 1일~오늘.
+  const today = new Date();
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const [subFrom, setSubFrom] = useState(dateOnly(monthStart));
+  const [subTo, setSubTo] = useState(dateOnly(today));
+  const [wdFrom, setWdFrom] = useState("");
+  const [wdTo, setWdTo] = useState("");
   const [templates, setTemplates] = useState<PermitTemplate[]>([]);
   const [tplBusy, setTplBusy] = useState(false);
 
@@ -92,6 +113,15 @@ export default function AdminPage() {
     try { await deleteTemplate(t.id); await fetchTemplates(); }
     catch (e) { alert("삭제 실패: " + e); }
     finally { setTplBusy(false); }
+  };
+
+  const [permitBusyId, setPermitBusyId] = useState("");
+  const removePermit = async (p: PermitRecord) => {
+    if (!window.confirm(`"${p.company || p.createdByEmail}" 허가서(${p.data.workContent || "-"})를 완전히 삭제할까요?\n삭제 후 되돌릴 수 없습니다.`)) return;
+    setPermitBusyId(p.id);
+    try { await deletePermit(p.id); await fetchAll(); }
+    catch (e) { alert("삭제 실패: " + ((e as Error)?.message ?? String(e))); }
+    finally { setPermitBusyId(""); }
   };
 
   // 업체(게스트) 계정 관리 — 업체는 셀프 회원가입, 관리자는 승인/차단/비번 관리
@@ -252,10 +282,26 @@ export default function AdminPage() {
     if (filter !== "all" && p.status !== filter) return false;
     if (search) {
       const q = search.toLowerCase();
-      return p.company.toLowerCase().includes(q) || (p.data.workContent ?? "").toLowerCase().includes(q);
+      if (!p.company.toLowerCase().includes(q) && !(p.data.workContent ?? "").toLowerCase().includes(q)) return false;
+    }
+    if (subFrom || subTo) {
+      const sd = tsToDateOnly(p.submittedAt);
+      if (!sd) return false;
+      if (subFrom && sd < subFrom) return false;
+      if (subTo && sd > subTo) return false;
+    }
+    if (wdFrom || wdTo) {
+      const wd = p.data.workDate || "";
+      if (!wd) return false;
+      if (wdFrom && wd < wdFrom) return false;
+      if (wdTo && wd > wdTo) return false;
     }
     return true;
   });
+  const resetDateFilters = () => {
+    setSubFrom(dateOnly(monthStart)); setSubTo(dateOnly(today));
+    setWdFrom(""); setWdTo("");
+  };
 
   // ── 엑셀형 표 컬럼 정의 ─────────────────────────────────────────────
   const roleLabel = (a: CompanyAccount) =>
@@ -365,11 +411,14 @@ export default function AdminPage() {
     { key: "status", header: "상태", width: 100, wrap: true, copyText: (p) => STATUS_LABEL[p.status],
       render: (p) => <span className={`chip chip-${p.status}`}>{STATUS_LABEL[p.status]}</span> },
     { key: "submitted", header: "제출일시", width: 120, copyText: (p) => tsToStr(p.submittedAt) },
-    { key: "act", header: "처리", width: 130, noSelect: true, wrap: true, copyText: () => "",
+    { key: "act", header: "처리", width: 190, noSelect: true, wrap: true, copyText: () => "",
       render: (p) => (
-        <button className="mini" onClick={() => router.push(`/fill?id=${p.id}`)} style={p.status === "submitted" ? { background: "#0a2240", color: "#fff" } : undefined}>
-          {p.status === "submitted" ? "검토/처리" : "보기/출력"}
-        </button>
+        <div className="cellbtns">
+          <button className="mini" onClick={() => router.push(`/fill?id=${p.id}`)} style={p.status === "submitted" ? { background: "#0a2240", color: "#fff" } : undefined}>
+            {p.status === "submitted" ? "검토/처리" : "보기/출력"}
+          </button>
+          <button className="mini danger" disabled={permitBusyId === p.id} onClick={() => removePermit(p)}>삭제</button>
+        </div>
       ) },
   ];
 
@@ -424,6 +473,19 @@ export default function AdminPage() {
             </div>
             <input className="inp" style={{ width: 200 }} placeholder="업체명 / 작업내용 검색"
               value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "#475569" }}>제출일시</span>
+            <input type="date" className="inp" style={{ width: 130 }} value={subFrom} onChange={(e) => setSubFrom(e.target.value)} />
+            <span style={{ color: "#94a3b8" }}>~</span>
+            <input type="date" className="inp" style={{ width: 130 }} value={subTo} onChange={(e) => setSubTo(e.target.value)} />
+            <span style={{ fontSize: 13, color: "#475569", marginLeft: 12 }}>작업일자</span>
+            <input type="date" className="inp" style={{ width: 130 }} value={wdFrom} onChange={(e) => setWdFrom(e.target.value)} />
+            <span style={{ color: "#94a3b8" }}>~</span>
+            <input type="date" className="inp" style={{ width: 130 }} value={wdTo} onChange={(e) => setWdTo(e.target.value)} />
+            <button className="mini" onClick={resetDateFilters}>기본값</button>
+            <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>{filtered.length}건</span>
           </div>
 
           {fetching ? (

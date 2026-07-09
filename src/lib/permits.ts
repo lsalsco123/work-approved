@@ -1,5 +1,5 @@
 import {
-  collection, doc, addDoc, updateDoc, getDoc, getDocs,
+  collection, doc, addDoc, updateDoc, deleteDoc, getDoc, getDocs,
   query, where, orderBy, limit, serverTimestamp, Timestamp,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
@@ -85,6 +85,10 @@ export async function rejectPermit(id: string, note: string): Promise<void> {
 
 export async function completePermit(id: string): Promise<void> {
   await updateDoc(doc(db, COL, id), { status: "completed", updatedAt: serverTimestamp() });
+}
+
+export async function deletePermit(id: string): Promise<void> {
+  await deleteDoc(doc(db, COL, id));
 }
 
 // 관리자 확인(원형 ●) + 검토자 저장 — confirmed 배열과 검토자(환경안전)만 갱신
