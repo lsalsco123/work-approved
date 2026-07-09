@@ -8,7 +8,7 @@ import {
   listAllPermits, PermitRecord, PermitStatus,
 } from "@/lib/permits";
 import { listTemplates, deleteTemplate, createTemplate, PermitTemplate } from "@/lib/templates";
-import { listCompanyAccounts, adminApprove, adminDeleteAccount, adminSetPassword, adminSetRole, sendResetEmail, CompanyAccount } from "@/lib/accounts";
+import { listCompanyAccounts, adminApprove, adminDeleteAccount, adminSetPassword, adminSetRole, adminSetProfile, sendResetEmail, CompanyAccount } from "@/lib/accounts";
 import { MANAGERS } from "@/lib/managers";
 import { DEFAULT_TEMPLATES } from "@/lib/samples";
 import { getAttachConfigs, setAttachConfig, AttachConfigMap, FormTemplateFile } from "@/lib/appConfig";
@@ -138,6 +138,13 @@ export default function AdminPage() {
   };
   const onResetEmail = (a: CompanyAccount) =>
     run(a.uid, () => sendResetEmail(a.email), `${a.email} 로 비밀번호 재설정 메일을 보냈습니다.`);
+  const onEditProfile = (a: CompanyAccount) => {
+    const company = window.prompt("업체명/소속:", a.company || "");
+    if (company == null) return;
+    const name = window.prompt("이름:", a.name || "");
+    if (name == null) return;
+    run(a.uid, () => adminSetProfile(a.uid, company, name), "업체명/이름을 수정했습니다.");
+  };
 
   // 역할 분류: 업체 / 시스템관리자 / 관리자(담당자·공장장)
   const roleValue = (a: CompanyAccount) =>
@@ -297,6 +304,7 @@ export default function AdminPage() {
             {a.status === "pending"
               ? <button className="mini btn-approve" disabled={busyUid === a.uid || !a.emailVerified} title={a.emailVerified ? "" : "이메일 인증 후 승인 가능"} onClick={() => onApprove(a)}>승인</button>
               : <button className="mini" disabled={busyUid === a.uid} onClick={() => onSetPassword(a)}>비번 변경</button>}
+            <button className="mini" disabled={busyUid === a.uid} onClick={() => onEditProfile(a)}>정보수정</button>
             <button className="mini" disabled={busyUid === a.uid} onClick={() => onResetEmail(a)}>재설정 메일</button>
             <button className="mini btn-reject" disabled={busyUid === a.uid || isSelf} title={isSelf ? "본인 계정은 삭제할 수 없습니다." : undefined} onClick={() => onDelete(a)}>삭제</button>
           </div>

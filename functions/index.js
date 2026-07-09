@@ -304,6 +304,21 @@ exports.adminSetRole = onCall(async (request) => {
 });
 
 /**
+ * 계정 프로필(업체명/소속, 이름) 수정 — 가입 시 1회만 기록되던 값을 시스템관리자가 정정할 수 있게 한다.
+ */
+exports.adminSetProfile = onCall(async (request) => {
+  await assertAdmin(request);
+  const uid = requireUid(request.data);
+  const d = request.data || {};
+  const company = String(d.company || "").trim();
+  const name = String(d.name || "").trim();
+  if (!company) throw new HttpsError("invalid-argument", "업체명(소속)을 입력하세요.");
+  if (!name) throw new HttpsError("invalid-argument", "이름을 입력하세요.");
+  await db().collection("users").doc(uid).set({company, name}, {merge: true});
+  return {ok: true, company, name};
+});
+
+/**
  * 본인 커스텀 클레임(admin) 동기화 — 호출자의 Firestore users/{uid}.role 을 읽어
  * admin 여부를 토큰 클레임에 반영한다. 기존 관리자가 재지정 없이 클레임을 받도록 하는 셀프 경로.
  * 안전성: 게스트가 호출해도 본인 Firestore role 은 스스로 admin 으로 바꿀 수 없으므로(rules),

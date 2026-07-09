@@ -73,6 +73,13 @@ export async function adminSetPassword(uid: string, password: string): Promise<v
   await httpsCallable(functions, "adminSetPassword")({ uid, password });
 }
 
+// 업체명(소속)/이름 정정 — 가입 시 1회만 기록되던 값을 시스템관리자가 수정.
+export async function adminSetProfile(uid: string, company: string, name: string): Promise<void> {
+  if (!company.trim()) throw new Error("업체명(소속)을 입력하세요.");
+  if (!name.trim()) throw new Error("이름을 입력하세요.");
+  await httpsCallable(functions, "adminSetProfile")({ uid, company: company.trim(), name: name.trim() });
+}
+
 // 역할 분류: 업체(guest)/관리자(manager)/시스템관리자(admin). 관리자면 kind(requester/factory)+이름.
 export async function adminSetRole(
   uid: string, role: "guest" | "manager" | "admin", managerKind: ManagerKind = "", managerName = "",
