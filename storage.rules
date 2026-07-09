@@ -3,13 +3,16 @@ service firebase.storage {
   match /b/{bucket}/o {
 
     // 작업허가서 첨부파일: permits/{permitId}/{uploaderUid}/{fileName}
-    //  - 읽기: 로그인한 모든 사용자(업체·담당자·환경안전·공장장·관리자가 결재 시 열람)
+    //  - 읽기: 직접 차단(false). getDownloadURL() 토큰은 Security Rules 를 완전히 우회해
+    //    한 번 유출되면 규칙과 무관하게 영구 열람권이 되므로, 열람은 반드시
+    //    Cloud Function(getAttachmentUrl)이 매번 permit 소유권/결재라인을 재검증한 뒤
+    //    발급하는 단기 서명 URL로만 한다 (admin SDK 는 이 rules 를 그대로 우회해 동작).
     //  - 생성: 업로더 본인(uid 일치) + 25MB 이하
     //  - 삭제: 업로더 본인
     //  ※ Storage rules 는 named DB("default")의 Firestore 문서를 교차참조할 수 없어
     //    permit 소유권 대신 경로의 uid 세그먼트로 업로더를 강제한다.
     match /permits/{permitId}/{uid}/{fileName} {
-      allow read: if request.auth != null;
+      allow read: if false;
       allow create: if request.auth != null
                     && request.auth.uid == uid
                     && request.resource.size < 25 * 1024 * 1024;

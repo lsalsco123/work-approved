@@ -1,7 +1,7 @@
 "use client";
 import React, { useRef, useState } from "react";
 import {
-  PermitAttachment, uploadAttachment, removeAttachment, formatBytes, MAX_ATTACHMENT_BYTES,
+  PermitAttachment, uploadAttachment, removeAttachment, getAttachmentSignedUrl, formatBytes, MAX_ATTACHMENT_BYTES,
 } from "@/lib/attachments";
 
 // 첨부파일 섹션. 여러 파일 업로드 + 목록/다운로드/삭제.
@@ -20,7 +20,26 @@ export default function Attachments({
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [openingPath, setOpeningPath] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // 열람은 항상 새로 발급받은 단기 서명 URL로만 한다 (저장된 att.url 은 레거시 필드, 신뢰하지 않음).
+  // 팝업 차단을 피하려고 클릭 시점에 빈 탭을 먼저 열고, URL을 받으면 그 탭의 위치를 옮긴다.
+  const handleOpen = async (att: PermitAttachment) => {
+    if (!permitId) return;
+    const win = window.open("", "_blank");
+    setMsg(""); setOpeningPath(att.path);
+    try {
+      const url = await getAttachmentSignedUrl(permitId, att.path);
+      if (win) win.location.href = url;
+      else window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      win?.close();
+      setMsg("파일 열기 실패: " + ((e as { message?: string })?.message || e));
+    } finally {
+      setOpeningPath(null);
+    }
+  };
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || !files.length) return;
@@ -99,9 +118,14 @@ export default function Attachments({
               }}
             >
               <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                <a href={att.url} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "none" }}>
-                  📎 {att.name}
-                </a>
+                <button
+                  type="button"
+                  onClick={() => handleOpen(att)}
+                  disabled={openingPath === att.path}
+                  style={{ border: "none", background: "none", padding: 0, color: "#2563eb", cursor: openingPath === att.path ? "wait" : "pointer", font: "inherit" }}
+                >
+                  📎 {att.name}{openingPath === att.path ? " (여는 중…)" : ""}
+                </button>
                 <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{formatBytes(att.size)}</span>
               </span>
               {canUpload && (
