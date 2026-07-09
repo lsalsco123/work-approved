@@ -12,7 +12,7 @@ import {
 import { listTemplates, getTemplate, createTemplate, updateTemplate, PermitTemplate } from "@/lib/templates";
 import { auth, db } from "@/lib/firebase";
 import { PermitAttachment } from "@/lib/attachments";
-import { getAttachConfigs, AttachConfigMap } from "@/lib/appConfig";
+import { getAttachConfigs, getCommonFormFiles, AttachConfigMap, FormTemplateFile } from "@/lib/appConfig";
 import { FieldSignatureKey, SignatureTarget, FIELD_SIGNATURE_LABELS } from "./constants";
 import { todayYmd, splitCutoffTime, joinCutoffTime } from "./utils";
 
@@ -50,6 +50,7 @@ export function useFillPermit() {
   const [attachments, setAttachments] = useState<PermitAttachment[]>([]);
   // 관리자가 설정한 작업형태별 첨부 설정(안내 목록 + 업로드 표시 여부)
   const [attachCfgs, setAttachCfgs] = useState<AttachConfigMap>({});
+  const [commonFormFiles, setCommonFormFiles] = useState<FormTemplateFile[]>([]);
 
   useEffect(() => {
     if (!cloudId) return;
@@ -79,6 +80,11 @@ export function useFillPermit() {
   // 관리자 설정 작업형태별 첨부 설정 로드 (작성 화면 첨부 섹션에 반영)
   useEffect(() => {
     getAttachConfigs().then(setAttachCfgs).catch(() => { /* 설정 없음 → 기본값 */ });
+  }, []);
+
+  // 관리자가 일괄 업로드한 공통 양식 파일 목록 — "양식 목록" 버튼에서 다운로드
+  useEffect(() => {
+    getCommonFormFiles().then(setCommonFormFiles).catch(() => { /* 설정 없음 → 빈 목록 */ });
   }, []);
 
   // 예시 양식 편집 모드: 기존 템플릿 로드
@@ -576,7 +582,7 @@ export function useFillPermit() {
     templates, templateName, templateWorkType, setTemplateWorkType, templateOrder, setTemplateOrder,
     signatureTarget, setSignatureTarget, saveApprovalPreset, setSaveApprovalPreset,
     loadError,
-    attachments, setAttachments, attachCfgs,
+    attachments, setAttachments, attachCfgs, commonFormFiles,
     isGuest, isReadOnly, canSubmit,
     handleSave, handleSubmit, handleSaveTemplate, applyTemplateWorkType, hasTemplateFor,
     toggleConfirm, confirmAll, clearConfirm, handleSaveConfirm,

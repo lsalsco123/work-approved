@@ -1,5 +1,5 @@
 "use client";
-import React, { Suspense } from "react";
+import React, { Suspense, useState } from "react";
 import { Section, Row, Text, Area, CheckGroup, RadioGroup } from "@/components/fields";
 import JsaEditor from "@/components/JsaEditor";
 import FormRenderer from "@/components/FormRenderer";
@@ -17,6 +17,36 @@ import { joinCutoffTime } from "./utils";
 import { useFillPermit } from "./useFillPermit";
 import ApprovalPanel from "./ApprovalPanel";
 
+function FormListButton({ files }: { files: { path: string; name: string; url: string }[] }) {
+  const [open, setOpen] = useState(false);
+  if (files.length === 0) return null;
+  return (
+    <div style={{ position: "relative" }}>
+      <button className="primary" onClick={() => setOpen((s) => !s)}>양식 목록</button>
+      {open && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 998 }} onClick={() => setOpen(false)} />
+          <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 4px 14px rgba(0,0,0,.15)", minWidth: 220, zIndex: 999, padding: 6 }}>
+            {files.map((f) => (
+              <a
+                key={f.path}
+                href={f.url}
+                download={f.name}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setOpen(false)}
+                style={{ display: "block", padding: "8px 10px", fontSize: 13, color: "#1e293b", textDecoration: "none", borderRadius: 6, whiteSpace: "nowrap" }}
+              >
+                📄 {f.name}
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function FillInner() {
   const f = useFillPermit();
   const {
@@ -27,7 +57,7 @@ function FillInner() {
     permitId, permitStatus, permitStage, chain, adminNote, saving, cloudLoaded, loaded,
     signatureTarget, setSignatureTarget, saveApprovalPreset, setSaveApprovalPreset,
     loadError,
-    attachments, setAttachments, attachCfgs,
+    attachments, setAttachments, attachCfgs, commonFormFiles,
     isGuest, isReadOnly, canSubmit,
     handleSave, handleSubmit, handleSaveTemplate, applyTemplateWorkType, hasTemplateFor,
     toggleConfirm, confirmAll, clearConfirm, handleSaveConfirm,
@@ -98,6 +128,7 @@ function FillInner() {
           <button onClick={() => window.location.assign("/fill")}>새 허가서 작성</button>
         )}
         <button onClick={() => setShowPreview((s) => !s)}>{showPreview ? "미리보기 숨기기" : "미리보기"}</button>
+        <FormListButton files={commonFormFiles} />
         {templateMode ? (
           <>
             <button onClick={() => router.push("/admin")}>취소</button>
@@ -218,13 +249,8 @@ function FillInner() {
               .map((wt) => ({ label: WORK_TYPES.find((w) => w.v === wt)?.label.split(" (")[0] ?? wt, items: attachCfgs[wt]?.items ?? [] }))
               .filter((x) => x.items.length > 0)
               .map((x) => `${x.label}: ${x.items.join(", ")}`);
-            // 관리자가 미리 올려둔 예시 양식(선택한 작업형태별)
-            const formFiles = rel
-              .map((wt) => ({ label: WORK_TYPES.find((w) => w.v === wt)?.label.split(" (")[0] ?? wt, file: attachCfgs[wt]?.formFile }))
-              .filter((x): x is { label: string; file: NonNullable<typeof x.file> } => !!x.file)
-              .map((x) => ({ label: x.label, name: x.file.name, url: x.file.url }));
-            // 업로드 숨김이고, 기존 첨부·예시양식도 없으면 섹션 자체를 표시하지 않음
-            if (!uploadVisible && attachments.length === 0 && formFiles.length === 0) return null;
+            // 업로드 숨김이고, 기존 첨부도 없으면 섹션 자체를 표시하지 않음
+            if (!uploadVisible && attachments.length === 0) return null;
             return (
               <Section title="📎 첨부파일">
                 <Attachments
@@ -236,7 +262,6 @@ function FillInner() {
                   onChange={setAttachments}
                   requiredDocs={docLines}
                   uploadEnabled={uploadVisible}
-                  formFiles={formFiles}
                 />
               </Section>
             );

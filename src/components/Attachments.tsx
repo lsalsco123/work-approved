@@ -7,7 +7,7 @@ import {
 // 첨부파일 섹션. 여러 파일 업로드 + 목록/다운로드/삭제.
 // permitId 가 없으면(신규 임시저장 전) ensureId()로 먼저 draft 를 생성해 id 를 확보한다.
 export default function Attachments({
-  permitId, ensureId, uid, canUpload, value, onChange, requiredDocs = [], uploadEnabled = true, formFiles = [],
+  permitId, ensureId, uid, canUpload, value, onChange, requiredDocs = [], uploadEnabled = true,
 }: {
   permitId: string | null;
   ensureId: () => Promise<string | null>;
@@ -17,7 +17,6 @@ export default function Attachments({
   onChange: (next: PermitAttachment[]) => void;
   requiredDocs?: string[];
   uploadEnabled?: boolean;
-  formFiles?: { label: string; name: string; url: string }[];
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -66,27 +65,6 @@ export default function Attachments({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {formFiles.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <b style={{ fontSize: 13, color: "#334155" }}>예시 양식</b>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {formFiles.map((f, i) => (
-              <a
-                key={i}
-                href={f.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mini btn-accent"
-                style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 }}
-                download
-              >
-                📄 {f.label} 예시 양식 받기
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-
       {requiredDocs.length > 0 && (
         <div style={{ fontSize: 13, color: "#334155" }}>
           <b>필요 서류</b>

@@ -11,7 +11,7 @@ import { listTemplates, deleteTemplate, createTemplate, PermitTemplate } from "@
 import { listCompanyAccounts, adminApprove, adminDeleteAccount, adminSetPassword, adminSetRole, adminSetProfile, sendResetEmail, CompanyAccount } from "@/lib/accounts";
 import { MANAGERS } from "@/lib/managers";
 import { DEFAULT_TEMPLATES } from "@/lib/samples";
-import { getAttachConfigs, setAttachConfig, AttachConfigMap, FormTemplateFile } from "@/lib/appConfig";
+import { getAttachConfigs, setAttachConfig, getCommonFormFiles, setCommonFormFiles, AttachConfigMap, FormTemplateFile } from "@/lib/appConfig";
 import { uploadFormTemplate, deleteFormTemplate, MAX_FORM_TEMPLATE_BYTES } from "@/lib/formTemplateFiles";
 import { WORK_TYPES } from "@/lib/form";
 import SheetTable, { SheetColumn } from "@/components/SheetTable";
@@ -225,7 +225,6 @@ export default function AdminPage() {
   const [attachWT, setAttachWT] = useState("");        // 편집 중인 작업형태
   const [attachText, setAttachText] = useState("");
   const [attachUpload, setAttachUpload] = useState(true);
-  const [attachFormFile, setAttachFormFile] = useState<FormTemplateFile | null>(null);
   const [attachBusy, setAttachBusy] = useState(false);
   const fetchAttachCfgs = async () => {
     try { setAttachCfgs(await getAttachConfigs()); }
@@ -237,43 +236,51 @@ export default function AdminPage() {
     const c = attachCfgs[wt];
     setAttachText((c?.items ?? []).join("\n"));
     setAttachUpload(c?.upload !== false);
-    setAttachFormFile(c?.formFile ?? null);
   };
   const saveAttach = async () => {
     if (!attachWT || !user) return;
     const items = attachText.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
     setAttachBusy(true);
-    try { await setAttachConfig(attachWT, { items, upload: attachUpload, formFile: attachFormFile }, user.email); await fetchAttachCfgs(); alert(`${wtLabel(attachWT)} 첨부 설정을 저장했습니다.`); }
+    try { await setAttachConfig(attachWT, { items, upload: attachUpload }, user.email); await fetchAttachCfgs(); alert(`${wtLabel(attachWT)} 첨부 설정을 저장했습니다.`); }
     catch (e) { alert("저장 실패: " + ((e as Error)?.message ?? String(e))); }
     finally { setAttachBusy(false); }
   };
-  // 예시 양식 파일 업로드 — Storage 저장 후 즉시 appConfig 에도 반영(별도 저장 불필요).
-  const uploadAttachForm = async (file: File | undefined) => {
-    if (!file || !attachWT || !user) return;
-    if (file.size > MAX_FORM_TEMPLATE_BYTES) { alert("파일이 너무 큽니다(최대 25MB)."); return; }
-    setAttachBusy(true);
-    try {
-      const meta = await uploadFormTemplate(attachWT, file);
-      const items = attachText.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
-      await setAttachConfig(attachWT, { items, upload: attachUpload, formFile: meta }, user.email);
-      setAttachFormFile(meta);
-      await fetchAttachCfgs();
-      alert(`${wtLabel(attachWT)} 예시 양식을 올렸습니다.`);
-    } catch (e) { alert("업로드 실패: " + ((e as Error)?.message ?? String(e))); }
-    finally { setAttachBusy(false); }
+
+  // 공통 양식 파일 — 작업형태와 무관하게 일괄 업로드, 업체는 작성 화면에서 "양식 목록"으로 다운로드.
+  const [commonFiles, setCommonFiles] = useState<FormTemplateFile[]>([]);
+  const [commonBusy, setCommonBusy] = useState(false);
+  const fetchCommonFiles = async () => {
+    try { setCommonFiles(await getCommonFormFiles()); }
+    catch (e) { console.error("공통 양식 조회 실패:", e); }
   };
-  const removeAttachForm = async () => {
-    if (!attachWT || !user || !attachFormFile) return;
-    if (!window.confirm(`'${attachFormFile.name}' 예시 양식을 삭제할까요?`)) return;
-    setAttachBusy(true);
+  useEffect(() => { if (user?.role === "admin") fetchCommonFiles(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  const uploadCommonFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !user) return;
+    setCommonBusy(true);
     try {
-      await deleteFormTemplate(attachFormFile);
-      const items = attachText.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
-      await setAttachConfig(attachWT, { items, upload: attachUpload, formFile: null }, user.email);
-      setAttachFormFile(null);
-      await fetchAttachCfgs();
+      const metas: FormTemplateFile[] = [];
+      for (const file of Array.from(files)) {
+        if (file.size > MAX_FORM_TEMPLATE_BYTES) { alert(`${file.name}: 파일이 너무 큽니다(최대 25MB).`); continue; }
+        metas.push(await uploadFormTemplate("common", file));
+      }
+      if (metas.length === 0) return;
+      const next = [...commonFiles, ...metas];
+      await setCommonFormFiles(next, user.email);
+      setCommonFiles(next);
+    } catch (e) { alert("업로드 실패: " + ((e as Error)?.message ?? String(e))); }
+    finally { setCommonBusy(false); }
+  };
+  const removeCommonFile = async (f: FormTemplateFile) => {
+    if (!user) return;
+    if (!window.confirm(`'${f.name}' 양식 파일을 삭제할까요?`)) return;
+    setCommonBusy(true);
+    try {
+      await deleteFormTemplate(f);
+      const next = commonFiles.filter((x) => x.path !== f.path);
+      await setCommonFormFiles(next, user.email);
+      setCommonFiles(next);
     } catch (e) { alert("삭제 실패: " + ((e as Error)?.message ?? String(e))); }
-    finally { setAttachBusy(false); }
+    finally { setCommonBusy(false); }
   };
 
   const count = (s: PermitStatus) => permits.filter((p) => p.status === s).length;
@@ -386,7 +393,7 @@ export default function AdminPage() {
     },
     {
       key: "attach", header: "첨부 안내", width: 220, noSelect: true, wrap: true,
-      copyText: (w) => `${attachCfgs[w.v]?.upload !== false ? "업로드표시" : "업로드숨김"} / 안내 ${attachCfgs[w.v]?.items?.length ?? 0}줄${attachCfgs[w.v]?.formFile ? " / 예시양식" : ""}`,
+      copyText: (w) => `${attachCfgs[w.v]?.upload !== false ? "업로드표시" : "업로드숨김"} / 안내 ${attachCfgs[w.v]?.items?.length ?? 0}줄`,
       render: (w) => {
         const c = attachCfgs[w.v];
         const on = c?.upload !== false;
@@ -395,7 +402,6 @@ export default function AdminPage() {
           <div className="cellbtns" style={{ alignItems: "center" }}>
             <span className={`chip ${on ? "chip-approved" : "chip-draft"}`}>{on ? "업로드 표시" : "업로드 숨김"}</span>
             {n > 0 && <span style={{ fontSize: 11, color: "#64748b" }}>안내 {n}줄</span>}
-            {c?.formFile && <span className="chip chip-approved">예시양식</span>}
             <button className={`mini ${attachWT === w.v ? "btn-accent" : ""}`} disabled={attachBusy} onClick={() => selectAttachWT(w.v)}>{attachWT === w.v ? "편집 중" : "설정"}</button>
           </div>
         );
@@ -512,6 +518,33 @@ export default function AdminPage() {
               <div className="grow" />
               <button className="mini" disabled={tplBusy} onClick={seedDefaults}>{tplBusy ? "생성 중…" : "기본 예시 일괄 생성"}</button>
             </div>
+
+            <div style={{ marginBottom: 12, padding: 12, border: "1px solid #e2e8f0", borderRadius: 8, background: "#fbfcfe" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+                <b style={{ fontSize: 13 }}>공통 양식 파일</b>
+                <span className="sheet-hint" style={{ margin: 0 }}>작업형태와 무관하게 모든 업체가 작성 화면에서 "양식 목록" 버튼으로 다운로드할 수 있습니다. (파일당 최대 25MB, 저장 버튼 없이 즉시 반영)</span>
+                <div className="grow" />
+                <label className="mini btn-accent" style={{ cursor: commonBusy ? "not-allowed" : "pointer" }}>
+                  {commonBusy ? "처리 중…" : "양식 추가"}
+                  <input type="file" multiple style={{ display: "none" }} disabled={commonBusy}
+                    onChange={(e) => { uploadCommonFiles(e.target.files); e.target.value = ""; }} />
+                </label>
+              </div>
+              {commonFiles.length === 0 ? (
+                <p className="sheet-hint" style={{ margin: 0 }}>등록된 공통 양식 파일이 없습니다.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {commonFiles.map((f) => (
+                    <div key={f.path} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ color: "#0369a1", fontSize: 13, fontWeight: 600 }}>📄 {f.name}</a>
+                      <span style={{ fontSize: 11, color: "#94a3b8" }}>{(f.size / 1024 / 1024).toFixed(2)}MB</span>
+                      <button className="mini danger" disabled={commonBusy} onClick={() => removeCommonFile(f)}>삭제</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <SheetTable columns={tplCols} rows={tplTypeRows} rowKey={(w) => w.v} />
             {attachWT && (
               <div style={{ marginTop: 12, padding: 12, border: "1px solid #e2e8f0", borderRadius: 8, background: "#fbfcfe" }}>
@@ -533,30 +566,6 @@ export default function AdminPage() {
                   onChange={(e) => setAttachText(e.target.value)}
                 />
                 <p className="sheet-hint" style={{ marginTop: 6 }}>“업로드 칸 표시”를 끄면 해당 작업형태에서는 업체에게 첨부 업로드 칸이 보이지 않습니다.</p>
-
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px dashed #e2e8f0" }}>
-                  <b style={{ fontSize: 13 }}>사전 예시 양식 파일</b>
-                  <p className="sheet-hint" style={{ margin: "4px 0 8px" }}>미리 올려두면 업체가 작성 화면에서 “예시 양식 받기”로 다운로드할 수 있습니다. (최대 25MB, 저장 버튼 없이 즉시 반영)</p>
-                  {attachFormFile ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <a href={attachFormFile.url} target="_blank" rel="noopener noreferrer" style={{ color: "#0369a1", fontSize: 13, fontWeight: 600 }}>
-                        📄 {attachFormFile.name}
-                      </a>
-                      <label className="mini" style={{ cursor: attachBusy ? "not-allowed" : "pointer" }}>
-                        파일 교체
-                        <input type="file" style={{ display: "none" }} disabled={attachBusy}
-                          onChange={(e) => { uploadAttachForm(e.target.files?.[0]); e.target.value = ""; }} />
-                      </label>
-                      <button className="mini danger" disabled={attachBusy} onClick={removeAttachForm}>삭제</button>
-                    </div>
-                  ) : (
-                    <label className="mini btn-accent" style={{ cursor: attachBusy ? "not-allowed" : "pointer", display: "inline-block" }}>
-                      {attachBusy ? "처리 중…" : "예시 양식 올리기"}
-                      <input type="file" style={{ display: "none" }} disabled={attachBusy}
-                        onChange={(e) => { uploadAttachForm(e.target.files?.[0]); e.target.value = ""; }} />
-                    </label>
-                  )}
-                </div>
               </div>
             )}
           </div>
