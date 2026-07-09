@@ -65,6 +65,14 @@ service cloud.firestore {
                 && request.resource.data.get('chain', {}) == {});
     }
 
+    // 소유자(업체)가 건드릴 수 있는 top-level 필드만 화이트리스트로 제한한다.
+    // 정상 클라이언트는 data/updatedAt(임시저장), attachments(첨부), status/stage/chain/submittedAt(제출)만 쓴다.
+    // 제한이 없으면 company/createdByEmail/adminNote/approvedBy 같은 감사·표시용 필드를 조작할 수 있다.
+    function permitOwnerKeysAllowed() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['data', 'updatedAt', 'attachments', 'status', 'stage', 'chain', 'submittedAt']);
+    }
+
     // 사용자 프로필
     match /users/{uid} {
       function isSelf() { return request.auth != null && request.auth.uid == uid; }
@@ -74,11 +82,16 @@ service cloud.firestore {
       allow create: if isSelf()
         && request.resource.data.role == 'guest'
         && request.resource.data.status == 'pending';
-      // 수정 시 role/status 변경 금지 (자가 승인·권한 상승 차단). 승인/차단은 Cloud Function(admin SDK)이 처리.
-      // .get(...,default) 로 status 없는 legacy 문서에서도 평가 에러 없이 동작.
+      // 수정 시 role/status/managerKind/managerName 변경 금지 (자가 승인·권한 상승·결재라인 위장 차단).
+      // 이 필드들은 승인/차단(status)과 마찬가지로 Cloud Function(admin SDK, adminSetRole)만 쓸 수 있다.
+      // managerKind/managerName 을 열어두면 manager 계정이 스스로 공장장을 자칭하거나
+      // 다른 담당자 이름으로 바꿔 결재·조회 권한을 탈취할 수 있다 (chainAction/rules 가 이 필드를 그대로 신뢰).
+      // .get(...,default) 로 값 없는 legacy 문서에서도 평가 에러 없이 동작.
       allow update: if isSelf()
         && request.resource.data.role == resource.data.role
-        && request.resource.data.get('status', 'active') == resource.data.get('status', 'active');
+        && request.resource.data.get('status', 'active') == resource.data.get('status', 'active')
+        && request.resource.data.get('managerKind', '') == resource.data.get('managerKind', '')
+        && request.resource.data.get('managerName', '') == resource.data.get('managerName', '');
       allow delete: if false;
     }
 
@@ -112,7 +125,8 @@ service cloud.firestore {
             && request.resource.data.createdBy == resource.data.createdBy
             && request.resource.data.status in ['draft', 'submitted']
             && permitAdminFieldsLocked()
-            && permitSubmitTransitionOk());
+            && permitSubmitTransitionOk()
+            && permitOwnerKeysAllowed());
 
       allow delete: if isAdmin();
     }

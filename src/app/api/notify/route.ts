@@ -74,32 +74,42 @@ function excludeActor(recipients: string[], actorEmail: string): string[] {
 
 const PROJECT_ID = process.env.NEXT_PUBLIC_FB_PROJECT_ID;
 
-// 소유권/권한 검증: 서비스계정 없이 호출자의 idToken 으로 Firestore REST 를 직접 호출한다.
-// Firestore 보안 rules 가 호출자 권한을 자연히 강제하므로(읽기 거부=권한없음),
-// 200 응답 여부 + createdBy/role 필드만으로 "소유자 또는 admin" 인지 판정할 수 있다.
-// 반환: 발송 허용 시 true, 그 외(비소유·비admin·문서없음·네트워크예외) false.
-async function isOwnerOrAdmin(idToken: string, uid: string, permitId: string): Promise<boolean> {
-  if (!PROJECT_ID) return false;
+// Firestore REST 의 typed-value 형식({stringValue,mapValue,...})을 평범한 JS 값/객체로 변환.
+function decodeFirestoreValue(v: Record<string, unknown> | null | undefined): unknown {
+  if (!v) return null;
+  if ("stringValue" in v) return v.stringValue;
+  if ("integerValue" in v) return Number(v.integerValue);
+  if ("doubleValue" in v) return v.doubleValue;
+  if ("booleanValue" in v) return v.booleanValue;
+  if ("timestampValue" in v) return v.timestampValue;
+  if ("mapValue" in v) return decodeFirestoreFields(((v.mapValue as { fields?: unknown })?.fields as Record<string, unknown>) || {});
+  if ("arrayValue" in v) return ((((v.arrayValue as { values?: unknown[] })?.values) || []) as Record<string, unknown>[]).map(decodeFirestoreValue);
+  return null;
+}
+function decodeFirestoreFields(fields: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) out[k] = decodeFirestoreValue(v as Record<string, unknown>);
+  return out;
+}
+
+// 권한 검증 + 실제 permit 문서 조회를 한 번에 처리한다. 서비스계정 없이 호출자의 idToken 으로
+// Firestore REST 를 직접 호출 — Firestore 보안 rules 가 호출자 권한을 자연히 강제하므로
+// (읽기 거부=권한없음) 200 응답이면 소유자(업체)·시스템관리자·결재라인 관리자 중 하나로 확정된다.
+// kind/company/작업내용 등 메일에 쓰는 모든 값은 이 문서에서 직접 뽑아 쓴다 — 요청 body 는 신뢰하지 않는다
+// (그렇지 않으면 permit 읽기 권한만 있는 계정이 kind=final 등을 위조해 임의 내용의 메일을 보낼 수 있다).
+async function fetchAuthorizedPermit(idToken: string, permitId: string): Promise<Record<string, unknown> | null> {
+  if (!PROJECT_ID) return null;
   // 이 프로젝트 Firestore 는 named DB "default" (기본 "(default)" 아님)
   const base = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/default/documents`;
   try {
-    // 해당 permit 을 호출자 토큰으로 조회 → rules 가 권한을 강제.
-    // 읽기에 성공(200)하면 소유자(업체)·시스템관리자·결재라인 관리자 중 하나이므로 발송 허용.
     const permitRes = await fetch(`${base}/permits/${encodeURIComponent(permitId)}`, {
       headers: { Authorization: `Bearer ${idToken}` },
     });
-    if (permitRes.ok) return true;
-    // 읽기 실패 시에도 admin 이면 허용 (방어적)
-    const userRes = await fetch(`${base}/users/${encodeURIComponent(uid)}`, {
-      headers: { Authorization: `Bearer ${idToken}` },
-    });
-    if (userRes.ok) {
-      const userDoc = await userRes.json();
-      if (userDoc?.fields?.role?.stringValue === "admin") return true;
-    }
-    return false;
+    if (!permitRes.ok) return null;
+    const j = await permitRes.json();
+    return decodeFirestoreFields((j.fields as Record<string, unknown>) || {});
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -279,29 +289,59 @@ export async function POST(req: NextRequest) {
       // 토큰 없음/무효 → 401 (기존 동작 유지)
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
     }
-    const { uid, email: actorEmail } = caller;
+    const { email: actorEmail } = caller;
 
     const body = await req.json();
-    const { company, workContent, workDate, startTime, endTime, supervisor, permitId, permitData } = body;
+    const { permitId } = body;
+    const kind: string = body.kind || "submit";
 
     // 소유권 검증을 위해 permitId 필수 (없으면 검증 불가 → 발송 거부)
     if (!permitId || typeof permitId !== "string") {
       return NextResponse.json({ ok: false, error: "permitId required" }, { status: 400 });
     }
 
-    // 인가: 호출자가 해당 permit 의 소유자이거나 admin 일 때만 발송 허용
-    if (!(await isOwnerOrAdmin(idToken, uid, permitId))) {
+    // 인가 + 실제 permit 문서 조회를 동시에 처리. 메일 내용은 여기서 얻은 실제 문서 값만 쓴다
+    // (요청 body 의 company/workContent/permitData 등은 위조 가능하므로 절대 신뢰하지 않는다).
+    const permit = await fetchAuthorizedPermit(idToken, permitId);
+    if (!permit) {
       return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
     }
+    const pStatus = String(permit.status || "");
+    const pStage = String(permit.stage || "");
+    const pData = (permit.data as Record<string, unknown>) || {};
+    const ownerEmail = String(permit.createdByEmail || "");
 
-    // 결재 단계별 알림(kind) — 수신자/제목/안내문 분기
-    const kind: string = body.kind || "submit";
-    const reason: string = body.reason || "";
-    const managerName: string = (permitData?.manager as string) || "";
+    // kind 는 요청자가 지정하지만, 실제 문서 상태가 그 kind 가 의미하는 단계와 일치하는지 검증한다.
+    // 이게 없으면 permit 읽기 권한만 있는 계정(=모든 정상 업체 계정)이 kind=final 등을 위조해
+    // 실제 담당자에게 허위 결재완료/결재요청 메일을 보낼 수 있다.
+    const KIND_STATE_OK: Record<string, boolean> = {
+      submit: pStatus === "submitted" && pStage === "manager",
+      to_safety: pStage === "safety",
+      to_factory: pStage === "factory",
+      final: pStatus === "approved" && pStage === "done",
+      reject: pStatus === "rejected",
+    };
+    if (!(kind in KIND_STATE_OK) || !KIND_STATE_OK[kind]) {
+      console.error(JSON.stringify({
+        level: "error", message: "Notify kind does not match actual permit state",
+        route: "/api/notify", permitId, kind, pStatus, pStage,
+      }));
+      return NextResponse.json({ ok: false, error: "state_mismatch" }, { status: 409 });
+    }
+
+    // 결재 단계별 알림(kind) — 수신자/제목/안내문 분기. 아래 값들은 모두 실제 permit 문서에서만 가져온다.
+    const reason: string = kind === "reject" ? String(permit.adminNote || "") : "";
+    const managerName: string = String(pData.manager || "");
+    const workContent = String(pData.workContent || "");
+    const workDate = String(pData.workDate || "");
+    const startTime = String(pData.startTime || "");
+    const endTime = String(pData.endTime || "");
+    const supervisor = String(pData.supervisor || "");
+    const company = String(pData.company || "");
     const managerEmail = managerName ? MANAGER_EMAILS[managerName] : undefined;
     const FACTORY_EMAIL = process.env.FACTORY_EMAIL ?? NOTIFY_TO; // 공장장(이태훈) 메일 — 미설정 시 NOTIFY_EMAIL
     const co = company || "업체";
-    const wc = (workContent || "").slice(0, 40) || "작업내용 없음";
+    const wc = workContent.slice(0, 40) || "작업내용 없음";
 
     let recipients: string[];
     let subject: string;
@@ -334,17 +374,6 @@ export async function POST(req: NextRequest) {
       intro = `${co}의 「${workContent || "작업"}」 건의 최종 결재가 완료되었습니다. 출력하여 업체에 전달해 주세요.`;
     } else if (kind === "reject") {
       // 반려 사유는 작성 당사자(업체)에게 직접 전달 + 담당자에게도 통지.
-      let ownerEmail = "";
-      try {
-        const base = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/default/documents`;
-        const pr = await fetch(`${base}/permits/${encodeURIComponent(permitId)}`, {
-          headers: { Authorization: `Bearer ${idToken}` },
-        });
-        if (pr.ok) {
-          const pj = await pr.json();
-          ownerEmail = pj?.fields?.createdByEmail?.stringValue || "";
-        }
-      } catch { /* 업체 이메일 조회 실패 시 담당자에게만 발송 */ }
       recipients = Array.from(new Set([ownerEmail, managerEmail || NOTIFY_TO].filter(Boolean)));
       subject = `[반려] ${co} — ${wc}`;
       headline = "결재 반려 — 보완 후 재제출 필요";

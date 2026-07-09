@@ -574,7 +574,7 @@ export function useFillPermit() {
   const [electricalCutoffStart, electricalCutoffEnd] = splitCutoffTime(data.electricalCutoffTime);
 
   return {
-    router, user, authLoading, logout,
+    router, user, authLoading, logout, backList,
     cloudId, templateId, isNewTemplate, templateMode,
     data, setData, update, toggleIn, loaded,
     showPreview, setShowPreview,

@@ -50,7 +50,7 @@ function FormListButton({ files }: { files: { path: string; name: string; url: s
 function FillInner() {
   const f = useFillPermit();
   const {
-    router, user, authLoading, logout,
+    router, user, authLoading, logout, backList,
     templateMode,
     data, update, toggleIn,
     showPreview, setShowPreview,
@@ -114,7 +114,7 @@ function FillInner() {
           <>
             <span style={{ fontSize: 12, opacity: 0.75, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</span>
             {!isGuest && (
-              <button onClick={() => router.push("/admin")}>목록</button>
+              <button onClick={backList}>목록</button>
             )}
             {isGuest && !templateMode && (
               <button onClick={() => router.push("/my")}>내 목록</button>
