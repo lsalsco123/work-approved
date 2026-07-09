@@ -41,8 +41,8 @@ const WORK_TYPE_LABELS: Record<string, string> = {
 
 // Firebase ID 토큰 검증: Identity Toolkit REST 로 프로젝트 소속/유효성 확인
 // (firebase-admin·서비스계정 키 없이 NEXT_PUBLIC_FB_API_KEY 만으로 검증)
-// 반환: 유효하면 호출자 uid(localId), 무효/예외면 null
-async function verifyIdToken(idToken: string): Promise<string | null> {
+// 반환: 유효하면 호출자 uid(localId)+email, 무효/예외면 null
+async function verifyIdToken(idToken: string): Promise<{ uid: string; email: string } | null> {
   const apiKey = process.env.NEXT_PUBLIC_FB_API_KEY;
   if (!apiKey) return null;
   try {
@@ -56,11 +56,20 @@ async function verifyIdToken(idToken: string): Promise<string | null> {
     );
     if (!r.ok) return null;
     const j = await r.json();
-    const uid = Array.isArray(j.users) && j.users.length > 0 ? j.users[0]?.localId : null;
-    return typeof uid === "string" && uid ? uid : null;
+    const u = Array.isArray(j.users) && j.users.length > 0 ? j.users[0] : null;
+    const uid = typeof u?.localId === "string" ? u.localId : null;
+    if (!uid) return null;
+    return { uid, email: typeof u?.email === "string" ? u.email : "" };
   } catch {
     return null;
   }
+}
+
+// 이번 결재/처리를 수행한 당사자에게는 "당신이 방금 처리한 건" 알림을 보내지 않는다 — 본인은 이미 알고 있으므로.
+function excludeActor(recipients: string[], actorEmail: string): string[] {
+  const a = actorEmail.trim().toLowerCase();
+  if (!a) return recipients;
+  return recipients.filter((r) => r.trim().toLowerCase() !== a);
 }
 
 const PROJECT_ID = process.env.NEXT_PUBLIC_FB_PROJECT_ID;
@@ -265,11 +274,12 @@ export async function POST(req: NextRequest) {
     // 인증: 로그인한 Firebase 사용자만 호출 가능 (익명 메일 발송 남용 차단)
     const authz = req.headers.get("authorization") ?? "";
     const idToken = authz.startsWith("Bearer ") ? authz.slice(7).trim() : "";
-    const uid = idToken ? await verifyIdToken(idToken) : null;
-    if (!uid) {
+    const caller = idToken ? await verifyIdToken(idToken) : null;
+    if (!caller) {
       // 토큰 없음/무효 → 401 (기존 동작 유지)
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
     }
+    const { uid, email: actorEmail } = caller;
 
     const body = await req.json();
     const { company, workContent, workDate, startTime, endTime, supervisor, permitId, permitData } = body;
@@ -345,6 +355,17 @@ export async function POST(req: NextRequest) {
       subject = `[작업허가서 제출] ${co} — ${wc}`;
       headline = "작업허가서 제출 — 담당자 결재 필요";
       intro = "새 작업허가서가 제출되었습니다. 담당자 1차 결재를 진행해 주세요.";
+    }
+
+    // 방금 이 처리를 수행한 당사자는 수신자 목록에서 제외 (본인이 한 일이므로 재통지 불필요)
+    recipients = excludeActor(recipients, actorEmail);
+    if (recipients.length === 0) {
+      console.log(JSON.stringify({
+        level: "info",
+        message: "Notification skipped — only recipient was the acting user",
+        route: "/api/notify", permitId, kind,
+      }));
+      return NextResponse.json({ ok: true, skipped: "actor_only_recipient" });
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://work-approved.vercel.app";
