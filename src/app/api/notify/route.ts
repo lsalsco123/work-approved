@@ -302,7 +302,6 @@ export async function POST(req: NextRequest) {
     const FACTORY_EMAIL = process.env.FACTORY_EMAIL ?? NOTIFY_TO; // 공장장(이태훈) 메일 — 미설정 시 NOTIFY_EMAIL
     const co = company || "업체";
     const wc = (workContent || "").slice(0, 40) || "작업내용 없음";
-    const both = Array.from(new Set([NOTIFY_TO, ...(managerEmail ? [managerEmail] : [])]));
 
     let recipients: string[];
     let subject: string;
@@ -350,8 +349,8 @@ export async function POST(req: NextRequest) {
       subject = `[반려] ${co} — ${wc}`;
       headline = "결재 반려 — 보완 후 재제출 필요";
       intro = `제출하신 작업허가서가 반려되었습니다.${reason ? ` 사유: ${reason}` : ""} 내용을 보완하여 다시 제출해 주세요.`;
-    } else { // submit
-      recipients = both;
+    } else { // submit — 담당자 이메일을 찾았으면 담당자에게만, 못 찾았을 때만 기본 관리자(NOTIFY_TO)로 fallback.
+      recipients = [managerEmail || NOTIFY_TO];
       subject = `[작업허가서 제출] ${co} — ${wc}`;
       headline = "작업허가서 제출 — 담당자 결재 필요";
       intro = "새 작업허가서가 제출되었습니다. 담당자 1차 결재를 진행해 주세요.";
