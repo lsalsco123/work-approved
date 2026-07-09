@@ -7,6 +7,7 @@ const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {setGlobalOptions} = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 const {getFirestore} = require("firebase-admin/firestore");
+const {getStorage} = require("firebase-admin/storage");
 
 admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
@@ -138,8 +139,8 @@ exports.chainAction = onCall(async (request) => {
   const d = request.data || {};
   const permitId = String(d.permitId || "").trim();
   const action = String(d.action || "");
-  const comment = String(d.comment || "").trim();
-  const reviewerName = String(d.reviewerName || "").trim();
+  const comment = String(d.comment || "").trim().slice(0, 500);
+  const reviewerName = String(d.reviewerName || "").trim().slice(0, 50);
   const signature = String(d.signature || "");
   if (!permitId) throw new HttpsError("invalid-argument", "permitId 가 필요합니다.");
   if (!["approve", "reject", "resubmit"].includes(action)) {
@@ -316,6 +317,64 @@ exports.adminSetProfile = onCall(async (request) => {
   if (!name) throw new HttpsError("invalid-argument", "이름을 입력하세요.");
   await db().collection("users").doc(uid).set({company, name}, {merge: true});
   return {ok: true, company, name};
+});
+
+/**
+ * 첨부파일 열람용 단기 서명 URL 발급.
+ * Firebase Storage 의 getDownloadURL() 토큰은 Security Rules 를 완전히 우회하므로
+ * (한 번 유출되면 규칙과 무관하게 영구 열람권이 된다), 첨부파일은 이 함수로만 접근하게 하고
+ * 매 요청마다 permit 소유권/결재라인을 다시 검증한 뒤 만료되는(기본 15분) 서명 URL만 내려준다.
+ * 준비 단계: storage.rules 의 직접 read 를 막기 전까지는 이 함수가 없어도 기존 방식이 동작하므로,
+ * rules 를 실제로 잠그는 시점에 이 함수로 전환한다 (그 전엔 사전에 GCP IAM 에서
+ * 이 함수의 서비스계정에 "Service Account Token Creator" 역할이 있는지 반드시 확인해야 한다 —
+ * 없으면 getSignedUrl 이 권한 오류로 실패한다).
+ */
+exports.getAttachmentUrl = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+  const permitId = String((request.data && request.data.permitId) || "").trim();
+  const path = String((request.data && request.data.path) || "").trim();
+  if (!permitId || !path) {
+    throw new HttpsError("invalid-argument", "permitId, path 가 필요합니다.");
+  }
+  // path 는 반드시 이 permitId 소유 폴더 하위여야 한다 (다른 permit 의 첨부 경로 조회 방지).
+  if (!path.startsWith(`permits/${permitId}/`)) {
+    throw new HttpsError("invalid-argument", "path 가 permitId 와 일치하지 않습니다.");
+  }
+
+  const usnap = await db().collection("users").doc(uid).get();
+  const u = usnap.exists ? usnap.data() : {};
+  if ((u.status || "active") === "blocked") {
+    throw new HttpsError("permission-denied", "차단된 계정입니다.");
+  }
+  const psnap = await db().collection("permits").doc(permitId).get();
+  if (!psnap.exists) throw new HttpsError("not-found", "허가서를 찾을 수 없습니다.");
+  const permit = psnap.data();
+
+  // firestore.rules 의 permits 읽기 권한과 동일한 기준을 그대로 재현한다.
+  const role = u.role || "guest";
+  const isSys = role === "admin";
+  const isOwner = permit.createdBy === uid;
+  const reqMgr = (permit.data && permit.data.manager) || "";
+  const isReqMgr = role === "manager" &&
+    u.managerKind === "requester" && u.managerName === reqMgr;
+  const isFactoryMgr = role === "manager" &&
+    u.managerKind === "factory" &&
+    (permit.stage === "factory" ||
+      ["approved", "completed"].includes(permit.status));
+  const canRead = isSys || isOwner ||
+    (permit.status !== "draft" && (isReqMgr || isFactoryMgr));
+  if (!canRead) {
+    throw new HttpsError("permission-denied", "이 허가서 첨부파일을 열람할 권한이 없습니다.");
+  }
+
+  const file = getStorage().bucket().file(path);
+  const [exists] = await file.exists();
+  if (!exists) throw new HttpsError("not-found", "파일을 찾을 수 없습니다.");
+  const [url] = await file.getSignedUrl({
+    version: "v4", action: "read", expires: Date.now() + 15 * 60 * 1000,
+  });
+  return {url};
 });
 
 /**
