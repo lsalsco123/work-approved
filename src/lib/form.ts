@@ -470,5 +470,8 @@ export function confirmableItems(data: PermitData): { ref: string; label: string
   RADIATION.forEach((x) => { if (data.radiation.includes(x.v)) add(x.cell, `방사능: ${x.v}`); });
   if (data.energyMode === "none") add("Q31", "에너지원: 해당없음");
   if (data.energyMode === "general") add("U31", "에너지원: 차단조치");
+  // 아래 둘은 인쇄 체크마크가 아니라 검토(review) 서명 재사용 항목 — 확인 체크리스트에만 노출해 일괄확인 대상에 포함.
+  out.push({ ref: "jsaConfirm", label: "개선조치 결과 확인(JSA)" });
+  if (data.workTypes.includes("hot")) out.push({ ref: "hotFireManagerConfirm", label: "화기 소방안전관리자 확인" });
   return out;
 }

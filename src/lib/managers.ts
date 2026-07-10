@@ -32,4 +32,4 @@ export function managerDept(name: string): string {
 }
 
 // 검토(환경안전) 담당자 — 검토 소속은 항상 "환경안전", 성명은 이 명단에서만 선택
-export const SAFETY_REVIEWERS: string[] = ["황성재", "이승훈", "박세현"];
+export const SAFETY_REVIEWERS: string[] = ["황성재", "이승준", "박세현"];

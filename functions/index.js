@@ -19,7 +19,7 @@ const db = () => getFirestore("default");
 
 // 환경안전 검토자 허용 명단 — src/lib/managers.ts 의 SAFETY_REVIEWERS 와 반드시 동기화해야 한다.
 // (빌드 단계가 분리되어 있어 공유 모듈로 import 할 수 없다.)
-const SAFETY_REVIEWERS = ["황성재", "이승훈", "박세현"];
+const SAFETY_REVIEWERS = ["황성재", "이승준", "박세현"];
 
 /**
  * 호출자가 admin 인지 검증한다. 아니면 throw.
