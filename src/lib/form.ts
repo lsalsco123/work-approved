@@ -440,6 +440,9 @@ export function buildOverlays(data: PermitData): Overlay[] {
     if (dept) push(deptVal(`T${rw}`, dept));
     if (name) push(nameVal(`X${rw}`, name));
     if (s.sign) out.push(signBox(`X${rw}`, s.sign, 0.46, 0.23, 0.16, 0.62));
+    // Work Sheet(JSA) "개선조치 결과 확인"(H182, 병합 H182:O185) = 환경안전 검토 서명 재사용.
+    // 인쇄된 "(인)"이 셀 우측 끝(셀의 ~85% 이후)에 있어 그 앞 중앙에 배치.
+    if (k === "review" && s.sign) out.push(signBox("H182", s.sign, 0.36, 0.22, 0.10, 0.80));
     // 날짜: fmtKDate 폭(~0.121)이 AB셀(0.116)보다 넓고 셀 끝이 페이지 우측 끝 → 박스를 좌측으로 넓혀 셀 안에 맞춤 (신청 AB167과 동일 처리)
     if (s.date) { const ab = cell(`AB${rw}`); push(txt(`AB${rw}`, fmtKDate(s.date), { x: ab.x - ab.w * 0.18, w: ab.w * 1.18, fontPt: 7 })); }
   });
