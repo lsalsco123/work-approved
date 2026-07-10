@@ -28,6 +28,7 @@ export default function ManagerPage() {
   const [permits, setPermits] = useState<PermitRecord[]>([]);
   const [fetching, setFetching] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [listTruncated, setListTruncated] = useState(false);
   const [filter, setFilter] = useState<"all" | PermitStatus>("submitted");
   const [permitBusyId, setPermitBusyId] = useState("");
 
@@ -48,7 +49,11 @@ export default function ManagerPage() {
   const fetchPermits = async () => {
     if (user?.role !== "manager") return;
     setFetching(true); setLoadError(false);
-    try { setPermits(await listChainPermits(user.managerKind, user.managerName)); }
+    try {
+      const { permits, truncated } = await listChainPermits(user.managerKind, user.managerName);
+      setPermits(permits);
+      setListTruncated(truncated);
+    }
     catch (e) { console.error("결재 목록 조회 실패:", e); setLoadError(true); }
     setFetching(false);
   };
@@ -161,6 +166,13 @@ export default function ManagerPage() {
           <h2>결재함</h2>
           <span className="sub"><b style={{ color: "#b45309" }}>내 차례 {myTurnCount}</b> · 대기 {count("submitted")} · 승인 {count("approved")} · 반려 {count("rejected")} · 완료 {count("completed")}</span>
         </div>
+
+        {listTruncated && (
+          <p className="note note-warn" style={{ marginBottom: 10 }}>
+            <span className="ico">⚠</span>
+            최근 {permits.length}건만 불러왔습니다 — 이보다 오래된 허가서는 날짜 필터를 조정해도 표시되지 않을 수 있습니다.
+          </p>
+        )}
 
         <div className="toolbar" style={{ flexWrap: "wrap" }}>
           {FILTERS.map((f) => (

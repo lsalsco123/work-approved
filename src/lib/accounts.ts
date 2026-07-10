@@ -4,7 +4,9 @@ import { doc, setDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { auth, db, functions } from "./firebase";
 
-export type ManagerKind = "" | "requester" | "safety" | "factory";
+// "safety"는 관리자 계정 분류로는 존재한 적 없는 죽은 값이었다(adminSetRole 은 requester/factory 만
+// 허용). 환경안전 검토 단계 자체(ChainStage="safety", src/lib/permits.ts)는 admin 이 전담하며 계속 유효하다.
+export type ManagerKind = "" | "requester" | "factory";
 
 export interface CompanyAccount {
   uid: string;
@@ -22,7 +24,8 @@ export interface CompanyAccount {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_RE = /^[0-9-]{9,14}$/;
+// 하이픈만으로 이루어진 문자열("---------")도 통과하던 것을 방지 — 숫자를 최소 9자 포함해야 한다.
+const PHONE_RE = /^(?=(?:.*\d){9,})[0-9-]{9,14}$/;
 
 // 업체 셀프 회원가입: 실제 이메일로 가입 → 인증메일 발송 → users 문서(status=pending) 작성.
 // 가입 직후 본인 세션으로 로그인되지만, 이메일 인증 + 관리자 승인 전까지 게이트에서 차단된다.
@@ -72,6 +75,10 @@ export async function adminApprove(uid: string): Promise<void> {
 
 export async function adminDeleteAccount(uid: string): Promise<void> {
   await httpsCallable(functions, "adminDeleteAccount")({ uid });
+}
+
+export async function adminSetBlocked(uid: string, blocked: boolean): Promise<void> {
+  await httpsCallable(functions, "adminSetBlocked")({ uid, blocked });
 }
 
 export async function adminSetPassword(uid: string, password: string): Promise<void> {

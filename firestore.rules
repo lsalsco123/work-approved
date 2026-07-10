@@ -50,7 +50,54 @@ service cloud.firestore {
     function permitAdminFieldsLocked() {
       return request.resource.data.get('data', {}).get('admin', {}) == resource.data.get('data', {}).get('admin', {})
         && request.resource.data.get('data', {}).get('hotFireManager', '') == resource.data.get('data', {}).get('hotFireManager', '')
-        && request.resource.data.get('data', {}).get('hotFireManagerSign', '') == resource.data.get('data', {}).get('hotFireManagerSign', '');
+        && request.resource.data.get('data', {}).get('hotFireManagerSign', '') == resource.data.get('data', {}).get('hotFireManagerSign', '')
+        // 환경안전팀 확인(●) 마크도 관리자만 기재한다(saveAdminFields, admin 전용) — 소유자가
+        // 스스로 확인된 것처럼 위조해 최종 인쇄물에 반영시키는 것을 막는다.
+        && request.resource.data.get('data', {}).get('confirmed', []) == resource.data.get('data', {}).get('confirmed', []);
+    }
+
+    // 생성 시점에 결재 서명·메타를 위조해 넣을 수 없도록 강제한다.
+    // permitAdminFieldsLocked() 는 수정(update)에서만 이전 값과 동일한지 검사하므로 생성(create)에는
+    // 적용되지 않는다 — 이 함수가 없으면 소유자가 최초 생성 시 data.admin.*.sign 등에
+    // 이미 승인된 것처럼 보이는 위조 서명을 심고 그대로 제출해 결재라인을 속일 수 있다.
+    function permitCreateFieldsOk() {
+      let d = request.resource.data.get('data', {});
+      let admin = d.get('admin', {});
+      return admin.get('issue', {}).get('sign', '') == ''
+        && admin.get('review', {}).get('sign', '') == ''
+        && admin.get('approve', {}).get('sign', '') == ''
+        && admin.get('complete', {}).get('sign', '') == ''
+        && d.get('hotFireManagerSign', '') == ''
+        && d.get('confirmed', []) == []
+        && request.resource.data.get('stage', null) == null
+        && request.resource.data.get('chain', {}) == {}
+        && request.resource.data.get('approvedBy', null) == null
+        && request.resource.data.get('approvedAt', null) == null
+        && request.resource.data.get('adminNote', null) == null;
+    }
+
+    // 유효한 PNG dataURL 서명이거나 미서명(빈 문자열)인지 확인한다. 크기는 chainAction 의
+    // 결재 서명 검증과 동일하게 100KB 로 제한한다 — 형식 검증이 없으면 소유자가 임의 문자열이나
+    // 외부 URL 을 서명 필드에 심어 결재자 확인 화면에 <img src> 로 그대로 로드시킬 수 있다.
+    function validPngSignOrEmpty(s) {
+      return s == '' || (s.matches('^data:image/png;base64,.*') && s.size() < 100000);
+    }
+
+    // 업체가 직접 입력하는 현장 서명 필드들의 형식을 검증한다.
+    // (교육서약 참여자 배열(eduSigners[].sign)은 rules 언어로 배열 원소별 검사가 어려워
+    // 제외한다 — 알려진 잔여 격차로 남겨둔다.)
+    function ownerSignatureFieldsOk() {
+      let d = request.resource.data.get('data', {});
+      return validPngSignOrEmpty(d.get('supervisorSign', ''))
+        && validPngSignOrEmpty(d.get('hotFireWatcherSign', ''))
+        && validPngSignOrEmpty(d.get('confinedWatcherSign', ''))
+        && validPngSignOrEmpty(d.get('electricalCutoffPersonSign', ''))
+        && validPngSignOrEmpty(d.get('excavationBuriedCheckerSign', ''))
+        && validPngSignOrEmpty(d.get('heavySignalerSign', ''))
+        && validPngSignOrEmpty(d.get('energyPersonSign', ''))
+        && validPngSignOrEmpty(d.get('worksheetAuthorSign', ''))
+        && validPngSignOrEmpty(d.get('representativeSign', ''))
+        && validPngSignOrEmpty(d.get('applicantSign', ''));
     }
 
     // 소유자가 바꿀 수 있는 stage/chain 전이: 같은 상태로 저장(둘 다 불변) 이거나,
@@ -78,20 +125,31 @@ service cloud.firestore {
       function isSelf() { return request.auth != null && request.auth.uid == uid; }
 
       allow read: if isSelf() || isAdmin();
-      // 셀프 회원가입: role 은 반드시 guest, 최초 status 는 pending 강제 (자가 활성/승격 차단)
+      // 셀프 회원가입: role 은 반드시 guest, 최초 status 는 pending 강제 (자가 활성/승격 차단).
+      // email 은 실제 인증된 Auth 이메일과 일치해야 하고(표시용 이메일 위장 방지),
+      // company/name/phone 은 비어있지 않고 합리적 길이 이내여야 한다(빈 값·과대 페이로드 주입 방지).
       allow create: if isSelf()
         && request.resource.data.role == 'guest'
-        && request.resource.data.status == 'pending';
+        && request.resource.data.status == 'pending'
+        && request.resource.data.get('email', '') == request.auth.token.get('email', '')
+        && request.resource.data.get('company', '').size() > 0 && request.resource.data.get('company', '').size() <= 100
+        && request.resource.data.get('name', '').size() > 0 && request.resource.data.get('name', '').size() <= 100
+        && request.resource.data.get('phone', '').size() > 0 && request.resource.data.get('phone', '').size() <= 20;
       // 수정 시 role/status/managerKind/managerName 변경 금지 (자가 승인·권한 상승·결재라인 위장 차단).
       // 이 필드들은 승인/차단(status)과 마찬가지로 Cloud Function(admin SDK, adminSetRole)만 쓸 수 있다.
       // managerKind/managerName 을 열어두면 manager 계정이 스스로 공장장을 자칭하거나
       // 다른 담당자 이름으로 바꿔 결재·조회 권한을 탈취할 수 있다 (chainAction/rules 가 이 필드를 그대로 신뢰).
       // .get(...,default) 로 값 없는 legacy 문서에서도 평가 에러 없이 동작.
+      // 자가수정 가능 필드도 화이트리스트로 제한한다(정상 클라이언트는 savedApprovalSign 만 자가 갱신).
+      // 제한이 없으면 role/status/managerKind/managerName 외의 임의 필드를 주입하거나
+      // company/name 같은 표시용 필드를 검증 없이 위조할 수 있다.
       allow update: if isSelf()
-        && request.resource.data.role == resource.data.role
+        // .get(...,'guest') 로 role 없는 legacy 문서에서도 평가 에러 없이 동작(레거시 문서 자가수정 차단 회귀 방지).
+        && request.resource.data.get('role', 'guest') == resource.data.get('role', 'guest')
         && request.resource.data.get('status', 'active') == resource.data.get('status', 'active')
         && request.resource.data.get('managerKind', '') == resource.data.get('managerKind', '')
-        && request.resource.data.get('managerName', '') == resource.data.get('managerName', '');
+        && request.resource.data.get('managerName', '') == resource.data.get('managerName', '')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['savedApprovalSign']);
       allow delete: if false;
     }
 
@@ -101,15 +159,21 @@ service cloud.firestore {
         return request.auth != null && resource.data.createdBy == request.auth.uid;
       }
 
-      allow read: if isAdmin() || isOwner()
+      // isOwner() 에 accountActive() 를 더해, 차단(blocked)/승인대기(pending) 게스트는
+      // UI 게이트가 아니라 규칙 자체로도 본인 허가서를 읽을 수 없게 한다.
+      allow read: if isAdmin() || (isOwner() && accountActive())
         || (isChainManager(resource) && resource.data.status != 'draft');
 
       // 생성: 본인 소유 + 최초 상태는 draft 로 고정 + 승인된 활성 계정 + (게스트는) 이메일 인증 필요
+      // + 결재 서명·메타·단계 필드를 위조한 채로 생성할 수 없음(permitCreateFieldsOk)
+      // + 현장 서명 필드도 유효한 PNG dataURL 이거나 미서명이어야 함(ownerSignatureFieldsOk)
       allow create: if request.auth != null
         && requesterActive()
         && requesterVerified()
         && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.status == 'draft';
+        && request.resource.data.status == 'draft'
+        && permitCreateFieldsOk()
+        && ownerSignatureFieldsOk();
 
       // 수정:
       //  - 관리자: 전체 허용 (승인/반려/완료 등)
@@ -123,37 +187,48 @@ service cloud.firestore {
             && requesterVerified()
             && resource.data.status in ['draft', 'rejected']
             && request.resource.data.createdBy == resource.data.createdBy
-            && request.resource.data.status in ['draft', 'submitted']
+            // 'rejected' 도 허용: 반려건은 수정 중엔 상태를 그대로 두고 data만 임시저장하므로
+            // (permitSubmitTransitionOk 의 "무변경" 분기), 결과 상태도 rejected 로 남을 수 있다.
+            // 실제 제출 전이는 permitSubmitTransitionOk 의 두 번째 분기가 별도로 강제한다.
+            && request.resource.data.status in ['draft', 'rejected', 'submitted']
             && permitAdminFieldsLocked()
             && permitSubmitTransitionOk()
-            && permitOwnerKeysAllowed());
+            && permitOwnerKeysAllowed()
+            && ownerSignatureFieldsOk());
 
       // 삭제: 관리자 전체 / 작성자(업체) 본인 건 전체(임시저장~완료) /
-      // 1차 담당자(requester) 는 자신이 담당자로 지정된 건 전체. (되돌릴 수 없는 삭제 — 승정 승인, 2026-07-10)
+      // 1차 담당자(requester) 는 자신이 담당자로 지정된 건 전체(단, read 규칙과 동일하게
+      // draft 는 제외 — 열람도 못 하는 남의 임시저장 건까지 삭제할 수 있으면 안 된다).
+      // (되돌릴 수 없는 삭제 — 승정 승인, 2026-07-10)
       allow delete: if isAdmin()
         || (isOwner() && requesterActive())
         || (accountActive()
             && myUser().get('role', '') == 'manager'
             && myUser().get('managerKind', '') == 'requester'
-            && myUser().get('managerName', '') == resource.data.get('data', {}).get('manager', ''));
+            && myUser().get('managerName', '') == resource.data.get('data', {}).get('manager', '')
+            && resource.data.status != 'draft');
     }
 
-    // 작업형태별 예시 양식 (게스트는 불러오기만, 관리자만 작성/수정/삭제)
+    // 작업형태별 예시 양식 (활성 계정은 불러오기만, 관리자만 작성/수정/삭제).
+    // accountActive() 로 차단(blocked)/승인대기(pending) 계정은 로그인만 했다는 이유로
+    // 읽지 못하게 한다 — 이전엔 request.auth != null 만 요구해 UI 게이트에만 의존했다.
     match /permitTemplates/{id} {
-      allow read: if request.auth != null;
+      allow read: if accountActive();
       allow write: if isAdmin();
     }
 
-    // 작업형태별 JSA 레퍼런스 (게스트는 불러오기만, 관리자만 작성/수정/삭제)
-    match /jsaReferences/{wt} {
-      allow read: if request.auth != null;
-      allow write: if isAdmin();
-    }
-
-    // 앱 운영 설정 (첨부 필요 서류 안내 등) — 로그인 사용자 읽기, 관리자만 쓰기
+    // 앱 운영 설정 (첨부 필요 서류 안내 등) — 활성 계정 읽기, 관리자만 쓰기
     match /appConfig/{id} {
-      allow read: if request.auth != null;
+      allow read: if accountActive();
       allow write: if isAdmin();
+    }
+
+    // 알림 메일 중복 발송 방지용 1회성 클레임 문서(개인정보 없음, 존재 여부만 사용, /api/notify 전용).
+    // "생성"만 허용한다 — Firestore 는 create 를 문서 존재 여부와 무관하게 원자적으로 처리하므로
+    // (이미 있으면 실패) 같은 조합(permitId+kind+제출주기)의 재클레임을 별도 트랜잭션 없이 안전하게 막는다.
+    match /notifyLog/{id} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if false;
     }
   }
 }

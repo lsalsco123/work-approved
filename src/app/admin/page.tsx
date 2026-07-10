@@ -8,14 +8,14 @@ import {
   listAllPermits, deletePermit, PermitRecord, PermitStatus,
 } from "@/lib/permits";
 import { listTemplates, deleteTemplate, createTemplate, PermitTemplate } from "@/lib/templates";
-import { listCompanyAccounts, adminApprove, adminDeleteAccount, adminSetPassword, adminSetRole, adminSetProfile, sendResetEmail, CompanyAccount } from "@/lib/accounts";
+import { listCompanyAccounts, adminApprove, adminDeleteAccount, adminSetBlocked, adminSetPassword, adminSetRole, adminSetProfile, sendResetEmail, CompanyAccount } from "@/lib/accounts";
 import { MANAGERS } from "@/lib/managers";
 import { DEFAULT_TEMPLATES } from "@/lib/samples";
 import { getAttachConfigs, setAttachConfig, getCommonFormFiles, setCommonFormFiles, AttachConfigMap, FormTemplateFile } from "@/lib/appConfig";
 import { uploadFormTemplate, deleteFormTemplate, MAX_FORM_TEMPLATE_BYTES } from "@/lib/formTemplateFiles";
 import { WORK_TYPES } from "@/lib/form";
 import SheetTable, { SheetColumn } from "@/components/SheetTable";
-import { tsToStr, dateOnly, tsToDateOnly } from "@/lib/dateFmt";
+import { tsToStr, tsToDateOnly } from "@/lib/dateFmt";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
   draft: "임시저장",
@@ -40,18 +40,21 @@ export default function AdminPage() {
   const [permits, setPermits] = useState<PermitRecord[]>([]);
   const [fetching, setFetching] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [listTruncated, setListTruncated] = useState(false);
   const [filter, setFilter] = useState<"all" | PermitStatus>("submitted");
   const [search, setSearch] = useState("");
   // 접수 현황 날짜 범위 — 제출일시/작업일자 각각 독립 지정, 둘 다 또는 하나만 적용 가능.
-  // 기본값: 작업일자는 미지정, 제출일시는 당월 1일~오늘.
-  const today = new Date();
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const [subFrom, setSubFrom] = useState(dateOnly(monthStart));
-  const [subTo, setSubTo] = useState(dateOnly(today));
+  // 기본값은 둘 다 미지정(무필터) — 당월로 기본 고정하면 submittedAt 없는 임시저장(draft)이
+  // 상시 제외되고 전월 이전에 제출된 미결(제출됨) 건도 기본 화면에서 숨어 놓치기 쉽다.
+  const [subFrom, setSubFrom] = useState("");
+  const [subTo, setSubTo] = useState("");
   const [wdFrom, setWdFrom] = useState("");
   const [wdTo, setWdTo] = useState("");
   const [templates, setTemplates] = useState<PermitTemplate[]>([]);
   const [tplBusy, setTplBusy] = useState(false);
+  // 예시양식/첨부설정/공통양식 조회 실패 시 오류 표시용 — 이전엔 console.error 만 하고
+  // 조용히 빈 상태("미등록")로 렌더돼 관리자가 로드 실패를 인지할 방법이 없었다.
+  const [panelLoadError, setPanelLoadError] = useState(false);
 
   useEffect(() => {
     if (loading || user?.profileError) return; // 프로필 조회 실패 시엔 오판 리다이렉트 대신 재시도 화면
@@ -61,14 +64,18 @@ export default function AdminPage() {
   const fetchAll = async () => {
     setFetching(true);
     setLoadError(false);
-    try { setPermits(await listAllPermits()); }
+    try {
+      const { permits, truncated } = await listAllPermits();
+      setPermits(permits);
+      setListTruncated(truncated);
+    }
     catch (e) { console.error("목록 조회 실패:", e); setLoadError(true); }
     setFetching(false);
   };
 
   const fetchTemplates = async () => {
     try { setTemplates(await listTemplates()); }
-    catch (e) { console.error("예시 양식 조회 실패:", e); }
+    catch (e) { console.error("예시 양식 조회 실패:", e); setPanelLoadError(true); }
   };
 
   useEffect(() => { if (user?.role === "admin") { fetchAll(); fetchTemplates(); } }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -147,6 +154,11 @@ export default function AdminPage() {
     if (pw == null) return;
     run(a.uid, () => adminSetPassword(a.uid, pw), "비밀번호를 변경했습니다. 업체에 전달하세요.");
   };
+  const onToggleBlocked = (a: CompanyAccount) => {
+    const toBlock = a.status !== "blocked";
+    if (toBlock && !confirm(`${a.company || a.email} 계정을 차단할까요?\n즉시 로그인이 차단됩니다. 나중에 "차단 해제"로 되돌릴 수 있습니다.`)) return;
+    run(a.uid, () => adminSetBlocked(a.uid, toBlock), toBlock ? "계정을 차단했습니다." : "차단을 해제했습니다.");
+  };
   const onResetEmail = (a: CompanyAccount) =>
     run(a.uid, () => sendResetEmail(a.email), `${a.email} 로 비밀번호 재설정 메일을 보냈습니다.`);
   const onEditProfile = (a: CompanyAccount) => {
@@ -174,22 +186,35 @@ export default function AdminPage() {
     const isSelf = a.uid === user?.uid;
     // 미인증/승인대기 계정을 매니저·관리자로 승격하면 검증 절차를 건너뛰고 즉시 전체 접근이 열림.
     const notReady = a.status !== "active" || !a.emailVerified;
+    const currentVal = roleValue(a);
+    // MANAGERS 목록에 없는 이름(퇴사·개편 등으로 빠진 legacy 담당자)이면 대응하는 <option> 이
+    // 없어 select 가 첫 항목("업체")으로 잘못 표시된다 — 실제 값을 위한 option 을 동적으로 끼워넣는다.
+    const isUnknownRequester = currentVal.startsWith("req:")
+      && !MANAGERS.some((m) => m.name === currentVal.slice(4));
     return (
       <select
-        className="inp" style={{ width: 160, fontSize: 12 }} value={roleValue(a)}
+        className="inp" style={{ width: 160, fontSize: 12 }} value={currentVal}
         disabled={busyUid === a.uid || isSelf}
         title={isSelf ? "본인 역할은 변경할 수 없습니다." : notReady ? "승인·이메일인증 완료 후 역할을 지정하세요." : undefined}
         onChange={(e) => {
-          if (e.target.value !== "guest" && notReady
-              && !window.confirm("아직 승인/이메일 인증이 완료되지 않은 계정입니다. 그래도 역할을 지정할까요?")) {
-            return;
-          }
-          onSetRole(a, e.target.value);
+          const nextVal = e.target.value;
+          const roleLabel = nextVal === "guest" ? "업체"
+            : nextVal === "admin" ? "시스템관리자"
+            : nextVal === "factory" ? "관리자·공장장"
+            : `담당자(${nextVal.slice(4)})`;
+          const lines = [`${a.company || a.email} 계정의 역할을 "${roleLabel}"(으)로 변경할까요?`];
+          if (nextVal !== "guest" && notReady) lines.push("아직 승인/이메일 인증이 완료되지 않은 계정입니다.");
+          if (nextVal === "admin") lines.push("시스템관리자는 모든 데이터와 계정을 관리할 수 있는 최고 권한입니다.");
+          if (!window.confirm(lines.join("\n"))) return;
+          onSetRole(a, nextVal);
         }}
       >
         <option value="guest">업체</option>
         <option value="admin">시스템관리자</option>
         <option value="factory">관리자·공장장</option>
+        {isUnknownRequester && (
+          <option value={currentVal}>{currentVal.slice(4)} (미등록 담당자)</option>
+        )}
         <optgroup label="관리자·담당자">
           {MANAGERS.map((m) => <option key={m.name} value={`req:${m.name}`}>{m.name} ({m.dept})</option>)}
         </optgroup>
@@ -209,7 +234,7 @@ export default function AdminPage() {
   const [attachBusy, setAttachBusy] = useState(false);
   const fetchAttachCfgs = async () => {
     try { setAttachCfgs(await getAttachConfigs()); }
-    catch (e) { console.error("첨부 설정 조회 실패:", e); }
+    catch (e) { console.error("첨부 설정 조회 실패:", e); setPanelLoadError(true); }
   };
   useEffect(() => { if (user?.role === "admin") fetchAttachCfgs(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   const selectAttachWT = (wt: string) => {
@@ -232,7 +257,7 @@ export default function AdminPage() {
   const [commonBusy, setCommonBusy] = useState(false);
   const fetchCommonFiles = async () => {
     try { setCommonFiles(await getCommonFormFiles()); }
-    catch (e) { console.error("공통 양식 조회 실패:", e); }
+    catch (e) { console.error("공통 양식 조회 실패:", e); setPanelLoadError(true); }
   };
   useEffect(() => { if (user?.role === "admin") fetchCommonFiles(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   const uploadCommonFiles = async (files: FileList | null) => {
@@ -264,10 +289,9 @@ export default function AdminPage() {
     finally { setCommonBusy(false); }
   };
 
-  const count = (s: PermitStatus) => permits.filter((p) => p.status === s).length;
-
-  const filtered = permits.filter((p) => {
-    if (filter !== "all" && p.status !== filter) return false;
+  // 검색/날짜 필터만 적용한 집합 — KPI/탭 건수가 이 집합 기준이어야 아래 표(filtered)와 숫자가
+  // 항상 일치한다(이전엔 count() 가 필터 무시한 전체 permits 기준이라 표시 건수와 실제 행 수가 어긋났다).
+  const dateSearchFiltered = permits.filter((p) => {
     if (search) {
       const q = search.toLowerCase();
       if (!p.company.toLowerCase().includes(q) && !(p.data.workContent ?? "").toLowerCase().includes(q)) return false;
@@ -286,8 +310,10 @@ export default function AdminPage() {
     }
     return true;
   });
+  const count = (s: PermitStatus) => dateSearchFiltered.filter((p) => p.status === s).length;
+  const filtered = dateSearchFiltered.filter((p) => filter === "all" || p.status === filter);
   const resetDateFilters = () => {
-    setSubFrom(dateOnly(monthStart)); setSubTo(dateOnly(today));
+    setSubFrom(""); setSubTo("");
     setWdFrom(""); setWdTo("");
   };
 
@@ -338,6 +364,7 @@ export default function AdminPage() {
             {a.status === "pending"
               ? <button className="mini btn-approve" disabled={busyUid === a.uid || !a.emailVerified} title={a.emailVerified ? "" : "이메일 인증 후 승인 가능"} onClick={() => onApprove(a)}>승인</button>
               : <button className="mini" disabled={busyUid === a.uid} onClick={() => onSetPassword(a)}>비번 변경</button>}
+            <button className="mini" disabled={busyUid === a.uid || isSelf} title={isSelf ? "본인 계정은 차단할 수 없습니다." : undefined} onClick={() => onToggleBlocked(a)}>{a.status === "blocked" ? "차단 해제" : "차단"}</button>
             <button className="mini" disabled={busyUid === a.uid} onClick={() => onEditProfile(a)}>정보수정</button>
             <button className="mini" disabled={busyUid === a.uid} onClick={() => onResetEmail(a)}>재설정 메일</button>
             <button className="mini btn-reject" disabled={busyUid === a.uid || isSelf} title={isSelf ? "본인 계정은 삭제할 수 없습니다." : undefined} onClick={() => onDelete(a)}>삭제</button>
@@ -411,6 +438,9 @@ export default function AdminPage() {
 
   if (loading || !user) return <div className="loading"><span className="spinner" />불러오는 중…</div>;
   if (user.profileError) return <ProfileErrorRetry />;
+  // /manager 와 동일한 렌더 가드 — 비관리자가 리다이렉트 완료 전 잠깐이라도 관리자 셸을
+  // 렌더하지 않게 한다(데이터 fetch 는 이미 role 가드로 보호되어 실제 유출은 없었음).
+  if (user.role !== "admin") return <div className="loading"><span className="spinner" />불러오는 중…</div>;
 
   return (
     <div className="layout">
@@ -449,12 +479,19 @@ export default function AdminPage() {
             ))}
           </div>
 
+          {listTruncated && (
+            <p className="note note-warn" style={{ marginBottom: 10 }}>
+              <span className="ico">⚠</span>
+              최근 {permits.length}건만 불러왔습니다 — 이보다 오래된 허가서는 날짜 필터를 조정해도 표시되지 않을 수 있습니다.
+            </p>
+          )}
+
           <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
             <div className="rolesw">
               {TABS.map((t) => (
                 <button key={t.key} className={filter === t.key ? "on" : ""} onClick={() => setFilter(t.key)}>
                   {t.label}
-                  {t.key !== "all" ? ` (${count(t.key as PermitStatus)})` : ` (${permits.length})`}
+                  {t.key !== "all" ? ` (${count(t.key as PermitStatus)})` : ` (${dateSearchFiltered.length})`}
                 </button>
               ))}
             </div>
@@ -499,6 +536,13 @@ export default function AdminPage() {
               <div className="grow" />
               <button className="mini" disabled={tplBusy} onClick={seedDefaults}>{tplBusy ? "생성 중…" : "기본 예시 일괄 생성"}</button>
             </div>
+
+            {panelLoadError && (
+              <p className="note note-error" style={{ marginBottom: 10 }}>
+                <span className="ico">⚠</span>
+                예시 양식/첨부 설정/공통 양식 중 일부를 불러오지 못했습니다. 새로고침해 주세요.
+              </p>
+            )}
 
             <div style={{ marginBottom: 12, padding: 12, border: "1px solid #e2e8f0", borderRadius: 8, background: "#fbfcfe" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>

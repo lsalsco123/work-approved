@@ -17,6 +17,10 @@ setGlobalOptions({maxInstances: 10});
 const auth = () => admin.auth();
 const db = () => getFirestore("default");
 
+// 환경안전 검토자 허용 명단 — src/lib/managers.ts 의 SAFETY_REVIEWERS 와 반드시 동기화해야 한다.
+// (빌드 단계가 분리되어 있어 공유 모듈로 import 할 수 없다.)
+const SAFETY_REVIEWERS = ["황성재", "이승훈", "박세현"];
+
 /**
  * 호출자가 admin 인지 검증한다. 아니면 throw.
  * @param {object} request onCall 요청 객체
@@ -30,8 +34,12 @@ async function assertAdmin(request) {
   if (d.role !== "admin") {
     throw new HttpsError("permission-denied", "관리자 권한이 필요합니다.");
   }
-  if ((d.status || "active") === "blocked") {
-    throw new HttpsError("permission-denied", "차단된 계정입니다.");
+  const status = d.status || "active";
+  if (status !== "active") {
+    throw new HttpsError(
+        "permission-denied",
+        status === "blocked" ? "차단된 계정입니다." : "계정이 아직 승인되지 않았습니다.",
+    );
   }
   return uid;
 }
@@ -48,11 +56,11 @@ function requireUid(data) {
 }
 
 // 계정 목록 — 업체(guest)+관리자(manager)+시스템관리자(admin) 전체.
+// Auth 조회(getUser)를 계정별로 병렬 처리한다 — 순차 await 는 계정 수에 비례해 느려진다.
 exports.adminListAccounts = onCall(async (request) => {
   await assertAdmin(request);
   const snap = await db().collection("users").get();
-  const out = [];
-  for (const docSnap of snap.docs) {
+  const out = await Promise.all(snap.docs.map(async (docSnap) => {
     const d = docSnap.data();
     let emailVerified = false;
     let disabled = false;
@@ -65,7 +73,7 @@ exports.adminListAccounts = onCall(async (request) => {
     } catch (e) {
       // Auth 사용자 없음(삭제됨 등) — Firestore 값만 사용
     }
-    out.push({
+    return {
       uid: docSnap.id,
       email: authEmail,
       company: d.company || "",
@@ -78,16 +86,26 @@ exports.adminListAccounts = onCall(async (request) => {
       disabled,
       createdAt: d.createdAt || null,
       approvedAt: d.approvedAt || null,
-    });
-  }
+    };
+  }));
   out.sort((a, b) => (a.company || "").localeCompare(b.company || "", "ko"));
   return {accounts: out};
 });
 
-// 가입 승인: status -> active
+// 가입 승인: status -> active. 이메일 인증 완료 여부를 서버에서도 재검증한다
+// (클라이언트는 "승인" 버튼을 미인증 계정에 disabled 처리할 뿐이라, 직접 호출 시 우회될 수 있었다).
 exports.adminApprove = onCall(async (request) => {
   const adminUid = await assertAdmin(request);
   const uid = requireUid(request.data);
+  let verified = false;
+  try {
+    verified = (await auth().getUser(uid)).emailVerified;
+  } catch (e) {/* Auth 사용자 없음 — 미인증으로 간주 */}
+  if (!verified) {
+    throw new HttpsError(
+        "failed-precondition", "이메일 인증이 완료되지 않은 계정은 승인할 수 없습니다.",
+    );
+  }
   await db().collection("users").doc(uid).set(
       {
         status: "active",
@@ -120,11 +138,50 @@ exports.adminSetPassword = onCall(async (request) => {
   await assertAdmin(request);
   const uid = requireUid(request.data);
   const password = (request.data && String(request.data.password)) || "";
-  if (password.length < 6) {
-    throw new HttpsError("invalid-argument", "비밀번호는 6자 이상이어야 합니다.");
+  if (password.length < 6 || password.length > 128) {
+    throw new HttpsError("invalid-argument", "비밀번호는 6자 이상 128자 이하이어야 합니다.");
   }
   await auth().updateUser(uid, {password});
   return {ok: true};
+});
+
+/**
+ * 계정 차단/차단 해제 — status 를 active ↔ blocked 로 전환한다.
+ * 삭제(adminDeleteAccount)와 달리 되돌릴 수 있는 정지 조치. 본인 계정은 차단할 수 없다.
+ * 차단 해제는 현재 status 가 blocked 인 계정에만 허용한다(pending 승인 우회 방지 —
+ * 아직 승인되지 않은 계정을 활성화하려면 반드시 adminApprove 를 거쳐야 한다).
+ * 차단 시에는 기존 발급 토큰을 즉시 무효화해 최대 1시간 대기 없이 바로 효력이 발생하게 한다.
+ */
+exports.adminSetBlocked = onCall(async (request) => {
+  const adminUid = await assertAdmin(request);
+  const uid = requireUid(request.data);
+  const blocked = !!(request.data && request.data.blocked);
+  if (blocked && uid === adminUid) {
+    throw new HttpsError("failed-precondition", "본인 계정은 차단할 수 없습니다.");
+  }
+  if (!blocked) {
+    const beforeSnap = await db().collection("users").doc(uid).get();
+    const beforeStatus =
+      (beforeSnap.exists && beforeSnap.data().status) || "active";
+    if (beforeStatus !== "blocked") {
+      throw new HttpsError("failed-precondition", "차단된 계정만 차단 해제할 수 있습니다.");
+    }
+  }
+  await db().collection("users").doc(uid).set(
+      {
+        status: blocked ? "blocked" : "active",
+        ...(blocked ?
+          {blockedAt: new Date().toISOString(), blockedBy: adminUid} :
+          {unblockedAt: new Date().toISOString(), unblockedBy: adminUid}),
+      },
+      {merge: true},
+  );
+  if (blocked) {
+    try {
+      await auth().revokeRefreshTokens(uid);
+    } catch (e) {/* Auth 사용자 없음 등은 무시 */}
+  }
+  return {ok: true, status: blocked ? "blocked" : "active"};
 });
 
 /**
@@ -146,17 +203,30 @@ exports.chainAction = onCall(async (request) => {
   if (!["approve", "reject", "resubmit"].includes(action)) {
     throw new HttpsError("invalid-argument", "action 이 올바르지 않습니다.");
   }
-  if (action === "approve" &&
-      (!signature.startsWith("data:image/png;base64,") ||
-       signature.length > 100000)) {
-    throw new HttpsError("invalid-argument", "유효한 서명을 입력하세요.");
+  const PNG_PREFIX = "data:image/png;base64,";
+  const PNG_MAGIC =
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (action === "approve") {
+    if (!signature.startsWith(PNG_PREFIX) || signature.length > 100000) {
+      throw new HttpsError("invalid-argument", "유효한 서명을 입력하세요.");
+    }
+    // 접두어만이 아니라 실제 PNG 매직바이트까지 확인한다 — 접두어만 검사하면
+    // 접두어 뒤에 PNG 가 아닌 임의 base64 문자열을 붙여도 통과해 영구 기록에 남는다.
+    const decoded = Buffer.from(signature.slice(PNG_PREFIX.length), "base64");
+    if (decoded.length < 8 || !decoded.subarray(0, 8).equals(PNG_MAGIC)) {
+      throw new HttpsError("invalid-argument", "유효한 PNG 서명 이미지가 아닙니다.");
+    }
   }
 
   // 호출자 역할은 트랜잭션 중 불변이므로 밖에서 1회 조회
   const usnap = await db().collection("users").doc(callerUid).get();
   const u = usnap.exists ? usnap.data() : {};
-  if ((u.status || "active") === "blocked") {
-    throw new HttpsError("permission-denied", "차단된 계정입니다.");
+  const callerStatus = u.status || "active";
+  if (callerStatus !== "active") {
+    throw new HttpsError(
+        "permission-denied",
+        callerStatus === "blocked" ? "차단된 계정입니다." : "계정이 아직 승인되지 않았습니다.",
+    );
   }
   const role = u.role || "guest";
   const isSys = role === "admin";
@@ -228,14 +298,20 @@ exports.chainAction = onCall(async (request) => {
       upd["data.admin.issue.sign"] = signature;
       upd.stage = "safety";
     } else if (stage === "safety") {
-      upd["data.admin.review.name"] = reviewerName || "박세현";
+      // reviewerName 은 클라이언트가 보내는 값이므로, 실제 검토자 명단(SAFETY_REVIEWERS)에
+      // 있는 이름인지 서버에서도 재검증한다 — 클라 드롭다운만 믿으면 임의 이름이 기록될 수 있다.
+      const finalReviewer = reviewerName || "박세현";
+      if (!SAFETY_REVIEWERS.includes(finalReviewer)) {
+        throw new HttpsError("invalid-argument", "환경안전 검토자 이름이 올바르지 않습니다.");
+      }
+      upd["data.admin.review.name"] = finalReviewer;
       upd["data.admin.review.dept"] = "환경안전";
       upd["data.admin.review.date"] = today;
       upd["data.admin.review.sign"] = signature;
       // 화기작업: 소방안전관리자 서명은 업체가 아닌 환경안전(박세현) 검토 단계에서 기재한다.
       const wts = (permit.data && permit.data.workTypes) || [];
       if (Array.isArray(wts) && wts.includes("hot")) {
-        upd["data.hotFireManager"] = reviewerName || "박세현";
+        upd["data.hotFireManager"] = finalReviewer;
         upd["data.hotFireManagerSign"] = signature;
       }
       upd.stage = "factory";
@@ -315,6 +391,12 @@ exports.adminSetProfile = onCall(async (request) => {
   const name = String(d.name || "").trim();
   if (!company) throw new HttpsError("invalid-argument", "업체명(소속)을 입력하세요.");
   if (!name) throw new HttpsError("invalid-argument", "이름을 입력하세요.");
+  if (company.length > 100) {
+    throw new HttpsError("invalid-argument", "업체명(소속)이 너무 깁니다.");
+  }
+  if (name.length > 100) {
+    throw new HttpsError("invalid-argument", "이름이 너무 깁니다.");
+  }
   await db().collection("users").doc(uid).set({company, name}, {merge: true});
   return {ok: true, company, name};
 });

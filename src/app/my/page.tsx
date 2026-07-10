@@ -160,7 +160,16 @@ function MyDashboard() {
         {rejected > 0 && (
           <div className="no-print note note-warn" style={{ marginBottom: 12 }}>
             <span className="ico">⚠</span>
-            <span>반려된 허가서가 <strong>{rejected}건</strong> 있습니다. 내용을 수정한 뒤 다시 제출해 주세요.</span>
+            <div>
+              <span>반려된 허가서가 <strong>{rejected}건</strong> 있습니다. 내용을 수정한 뒤 다시 제출해 주세요.</span>
+              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                {permits.filter((p) => p.status === "rejected").map((p) => (
+                  <li key={p.id} style={{ fontSize: 13 }}>
+                    {p.data.workContent || "-"}{p.adminNote ? ` — ${p.adminNote}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         )}
 

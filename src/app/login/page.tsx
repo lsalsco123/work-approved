@@ -4,11 +4,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import { sendResetEmail } from "@/lib/accounts";
+import { ProfileErrorRetry } from "@/components/AccessGate";
 
+// user-not-found/invalid-credential/wrong-password 를 모두 같은 문구로 통일한다 —
+// "계정을 찾을 수 없습니다"처럼 계정 존재 여부를 구분해 알려주면 계정 열거(enumeration)에 악용될 수 있다.
 const ERR_MAP: Record<string, string> = {
-  "auth/user-not-found": "계정을 찾을 수 없습니다.",
+  "auth/user-not-found": "이메일 또는 비밀번호가 올바르지 않습니다.",
   "auth/invalid-credential": "이메일 또는 비밀번호가 올바르지 않습니다.",
-  "auth/wrong-password": "비밀번호가 올바르지 않습니다.",
+  "auth/wrong-password": "이메일 또는 비밀번호가 올바르지 않습니다.",
   "auth/invalid-email": "올바른 이메일 주소를 입력하세요.",
   "auth/too-many-requests": "로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요.",
 };
@@ -46,10 +49,11 @@ export default function LoginPage() {
     catch { setError("재설정 메일 발송에 실패했습니다. 이메일을 확인하세요."); }
   };
 
+  // profileError(프로필 조회 실패) 상태에서는 role 이 guest 기본값일 뿐이므로, 그대로 리다이렉트하면
+  // 실제 admin/manager 계정이 /my 로 잘못 보내질 수 있다 — 재시도 화면을 먼저 보여준다.
   useEffect(() => {
-    if (!loading && user) {
-      router.replace(user.role === "admin" ? "/admin" : user.role === "manager" ? "/manager" : "/my");
-    }
+    if (loading || !user || user.profileError) return;
+    router.replace(user.role === "admin" ? "/admin" : user.role === "manager" ? "/manager" : "/my");
   }, [user, loading, router]);
 
   useEffect(() => {
@@ -81,6 +85,8 @@ export default function LoginPage() {
       로딩 중…
     </div>
   );
+
+  if (user?.profileError) return <ProfileErrorRetry />;
 
   return (
     <div style={{ position: "relative", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>

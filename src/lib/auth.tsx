@@ -11,7 +11,9 @@ import { auth, db } from "./firebase";
 
 export type UserRole = "guest" | "manager" | "admin"; // admin = 시스템관리자
 export type AccountStatus = "pending" | "active" | "blocked";
-export type ManagerKind = "" | "requester" | "safety" | "factory";
+// "safety"는 관리자 계정 분류로는 존재한 적 없는 죽은 값이었다(adminSetRole 은 requester/factory 만
+// 허용). 환경안전 검토 단계 자체(ChainStage="safety", src/lib/permits.ts)는 admin 이 전담하며 계속 유효하다.
+export type ManagerKind = "" | "requester" | "factory";
 
 export interface AuthUser {
   uid: string;
@@ -20,7 +22,7 @@ export interface AuthUser {
   company: string;
   status: AccountStatus;      // legacy(상태 없음)는 active 로 승격해 호환
   emailVerified: boolean;
-  managerKind: ManagerKind;   // role=manager 일 때: requester/safety/factory
+  managerKind: ManagerKind;   // role=manager 일 때: requester/factory
   managerName: string;        // role=manager 일 때 담당자명(requester) 등
   savedApprovalSign: string;  // 결재자 본인 저장 서명(PNG data URL)
   profileError: boolean;      // Firestore 프로필 조회 실패(네트워크 지연 등) — role 등은 guest 기본값일 뿐 신뢰하지 말 것
