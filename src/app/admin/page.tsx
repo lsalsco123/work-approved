@@ -16,6 +16,7 @@ import { uploadFormTemplate, deleteFormTemplate, MAX_FORM_TEMPLATE_BYTES } from 
 import { WORK_TYPES } from "@/lib/form";
 import SheetTable, { SheetColumn } from "@/components/SheetTable";
 import { tsToStr, tsToDateOnly } from "@/lib/dateFmt";
+import ProgressChain from "@/components/ProgressChain";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
   draft: "임시저장",
@@ -422,8 +423,10 @@ export default function AdminPage() {
     { key: "company", header: "업체명", width: 130, copyText: (p) => p.company || p.createdByEmail },
     { key: "work", header: "작업내용", width: 280, copyText: (p) => p.data.workContent || "-" },
     { key: "date", header: "작업일자", width: 110, copyText: (p) => p.data.workDate || "-" },
-    { key: "status", header: "상태", width: 100, wrap: true, copyText: (p) => STATUS_LABEL[p.status],
-      render: (p) => <span className={`chip chip-${p.status}`}>{STATUS_LABEL[p.status]}</span> },
+    { key: "status", header: "상태", width: 190, wrap: true, copyText: (p) => STATUS_LABEL[p.status],
+      render: (p) => p.status === "submitted"
+        ? <ProgressChain stage={p.stage} status={p.status} />
+        : <span className={`chip chip-${p.status}`}>{STATUS_LABEL[p.status]}</span> },
     { key: "submitted", header: "제출일시", width: 120, copyText: (p) => tsToStr(p.submittedAt) },
     { key: "act", header: "처리", width: 190, noSelect: true, wrap: true, copyText: () => "",
       render: (p) => (

@@ -7,6 +7,7 @@ import { ProfileErrorRetry } from "@/components/AccessGate";
 import { listChainPermits, deletePermit, PermitRecord, PermitStatus } from "@/lib/permits";
 import SheetTable, { SheetColumn } from "@/components/SheetTable";
 import { tsToStr, tsToDateOnly } from "@/lib/dateFmt";
+import ProgressChain from "@/components/ProgressChain";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
   draft: "임시저장", submitted: "승인 대기", approved: "승인", rejected: "반려됨", completed: "완료",
@@ -114,7 +115,7 @@ export default function ManagerPage() {
       copyText: (p) => p.data.workDate || "-",
     },
     {
-      key: "status", header: "상태", width: 160, wrap: true,
+      key: "status", header: "상태", width: 190, wrap: true,
       copyText: (p) => {
         const parts = [STATUS_LABEL[p.status]];
         if (p.status === "submitted" && p.stage) parts.push(STAGE_LABEL[p.stage]);
@@ -123,8 +124,11 @@ export default function ManagerPage() {
       },
       render: (p) => (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
-          <span className={`chip chip-${p.status}`}>{STATUS_LABEL[p.status]}</span>
-          {p.status === "submitted" && p.stage && <span style={{ fontSize: 11, color: "#64748b" }}>{STAGE_LABEL[p.stage]}</span>}
+          {p.status === "submitted" ? (
+            <ProgressChain stage={p.stage} status={p.status} />
+          ) : (
+            <span className={`chip chip-${p.status}`}>{STATUS_LABEL[p.status]}</span>
+          )}
           {isMyTurn(p) && <span className="chip chip-submitted">내 차례</span>}
         </div>
       ),
