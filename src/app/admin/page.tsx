@@ -15,6 +15,7 @@ import { getAttachConfigs, setAttachConfig, getCommonFormFiles, setCommonFormFil
 import { uploadFormTemplate, deleteFormTemplate, MAX_FORM_TEMPLATE_BYTES } from "@/lib/formTemplateFiles";
 import { WORK_TYPES } from "@/lib/form";
 import SheetTable, { SheetColumn } from "@/components/SheetTable";
+import { tsToStr, dateOnly, tsToDateOnly } from "@/lib/dateFmt";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
   draft: "임시저장",
@@ -32,26 +33,6 @@ const TABS: { key: "all" | PermitStatus; label: string }[] = [
   { key: "rejected", label: "반려됨" },
   { key: "completed", label: "완료" },
 ];
-
-function tsToStr(ts: unknown): string {
-  if (!ts) return "-";
-  const d = (ts as { toDate?: () => Date }).toDate?.() ?? new Date(ts as string);
-  return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })
-    + " " + d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
-}
-
-// YYYY-MM-DD (로컬 기준) — <input type="date"> 값 및 날짜 범위 비교용
-function dateOnly(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-function tsToDateOnly(ts: unknown): string {
-  if (!ts) return "";
-  const d = (ts as { toDate?: () => Date }).toDate?.() ?? new Date(ts as string);
-  return dateOnly(d);
-}
 
 export default function AdminPage() {
   const { user, loading, logout } = useAuth();

@@ -4,8 +4,9 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import BuiltBy from "@/components/BuiltBy";
 import { ProfileErrorRetry } from "@/components/AccessGate";
-import { listChainPermits, PermitRecord, PermitStatus } from "@/lib/permits";
+import { listChainPermits, deletePermit, PermitRecord, PermitStatus } from "@/lib/permits";
 import SheetTable, { SheetColumn } from "@/components/SheetTable";
+import { tsToStr, tsToDateOnly } from "@/lib/dateFmt";
 
 const STATUS_LABEL: Record<PermitStatus, string> = {
   draft: "임시저장", submitted: "승인 대기", approved: "승인", rejected: "반려됨", completed: "완료",
@@ -18,13 +19,6 @@ const FILTERS: { k: "all" | PermitStatus; label: string }[] = [
   { k: "completed", label: "지난(완료)" },
 ];
 
-function tsToStr(ts: unknown): string {
-  if (!ts) return "-";
-  const d = (ts as { toDate?: () => Date }).toDate?.() ?? new Date(ts as string);
-  return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })
-    + " " + d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
-}
-
 const KIND_LABEL: Record<string, string> = { requester: "담당자", safety: "환경안전", factory: "공장장" };
 const STAGE_LABEL: Record<string, string> = { manager: "담당자 1차", safety: "환경안전", factory: "공장장 최종", done: "완료" };
 
@@ -35,6 +29,14 @@ export default function ManagerPage() {
   const [fetching, setFetching] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [filter, setFilter] = useState<"all" | PermitStatus>("submitted");
+  const [permitBusyId, setPermitBusyId] = useState("");
+
+  // 조회 날짜 범위 — 제출일시/작업일자 각각 독립 지정, 시스템관리자 화면과 동일한 방식.
+  const [subFrom, setSubFrom] = useState("");
+  const [subTo, setSubTo] = useState("");
+  const [wdFrom, setWdFrom] = useState("");
+  const [wdTo, setWdTo] = useState("");
+  const resetDateFilters = () => { setSubFrom(""); setSubTo(""); setWdFrom(""); setWdTo(""); };
 
   useEffect(() => {
     if (loading || user?.profileError) return; // 프로필 조회 실패 시엔 오판 리다이렉트 대신 재시도 화면
@@ -65,9 +67,33 @@ export default function ManagerPage() {
       (user.managerKind === "requester" && p.stage === "manager") ||
       (user.managerKind === "factory" && p.stage === "factory")
     );
-  const filtered = permits.filter((p) => filter === "all" || p.status === filter);
+  const filtered = permits.filter((p) => {
+    if (filter !== "all" && p.status !== filter) return false;
+    if (subFrom || subTo) {
+      const sd = tsToDateOnly(p.submittedAt);
+      if (!sd) return false;
+      if (subFrom && sd < subFrom) return false;
+      if (subTo && sd > subTo) return false;
+    }
+    if (wdFrom || wdTo) {
+      const wd = p.data.workDate || "";
+      if (!wd) return false;
+      if (wdFrom && wd < wdFrom) return false;
+      if (wdTo && wd > wdTo) return false;
+    }
+    return true;
+  });
   const count = (s: PermitStatus) => permits.filter((p) => p.status === s).length;
   const myTurnCount = permits.filter(isMyTurn).length;
+  const canDelete = user.managerKind === "requester";
+
+  const removePermit = async (p: PermitRecord) => {
+    if (!window.confirm(`"${p.company || p.createdByEmail}" 허가서(${p.data.workContent || "-"})를 완전히 삭제할까요?\n삭제 후 되돌릴 수 없습니다.`)) return;
+    setPermitBusyId(p.id);
+    try { await deletePermit(p.id); await fetchPermits(); }
+    catch (e) { alert("삭제 실패: " + ((e as Error)?.message ?? String(e))); }
+    finally { setPermitBusyId(""); }
+  };
   const permitCols: SheetColumn<PermitRecord>[] = [
     {
       key: "company", header: "업체", width: 200,
@@ -104,13 +130,16 @@ export default function ManagerPage() {
       render: (p) => <span style={{ fontSize: 12 }}>{tsToStr(p.submittedAt)}</span>,
     },
     {
-      key: "action", header: "", width: 90, noSelect: true,
+      key: "action", header: "", width: canDelete ? 160 : 90, noSelect: true,
       copyText: () => "",
       render: (p) => (
         <div className="cellbtns">
           <button className={`mini ${isMyTurn(p) ? "btn-accent" : ""}`} onClick={() => router.push(`/fill?id=${p.id}`)}>
             {isMyTurn(p) ? "결재" : "보기"}
           </button>
+          {canDelete && (
+            <button className="mini danger" disabled={permitBusyId === p.id} onClick={() => removePermit(p)}>삭제</button>
+          )}
         </div>
       ),
     },
@@ -139,6 +168,19 @@ export default function ManagerPage() {
               {f.label}
             </button>
           ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 13, color: "#475569" }}>제출일시</span>
+          <input type="date" className="inp" style={{ width: 130 }} value={subFrom} onChange={(e) => setSubFrom(e.target.value)} />
+          <span style={{ color: "#94a3b8" }}>~</span>
+          <input type="date" className="inp" style={{ width: 130 }} value={subTo} onChange={(e) => setSubTo(e.target.value)} />
+          <span style={{ fontSize: 13, color: "#475569", marginLeft: 12 }}>작업일자</span>
+          <input type="date" className="inp" style={{ width: 130 }} value={wdFrom} onChange={(e) => setWdFrom(e.target.value)} />
+          <span style={{ color: "#94a3b8" }}>~</span>
+          <input type="date" className="inp" style={{ width: 130 }} value={wdTo} onChange={(e) => setWdTo(e.target.value)} />
+          <button className="mini" onClick={resetDateFilters}>초기화</button>
+          <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>{filtered.length}건</span>
         </div>
 
         {fetching ? (

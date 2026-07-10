@@ -128,7 +128,14 @@ service cloud.firestore {
             && permitSubmitTransitionOk()
             && permitOwnerKeysAllowed());
 
-      allow delete: if isAdmin();
+      // 삭제: 관리자 전체 / 작성자(업체) 본인 건 전체(임시저장~완료) /
+      // 1차 담당자(requester) 는 자신이 담당자로 지정된 건 전체. (되돌릴 수 없는 삭제 — 승정 승인, 2026-07-10)
+      allow delete: if isAdmin()
+        || (isOwner() && requesterActive())
+        || (accountActive()
+            && myUser().get('role', '') == 'manager'
+            && myUser().get('managerKind', '') == 'requester'
+            && myUser().get('managerName', '') == resource.data.get('data', {}).get('manager', ''));
     }
 
     // 작업형태별 예시 양식 (게스트는 불러오기만, 관리자만 작성/수정/삭제)

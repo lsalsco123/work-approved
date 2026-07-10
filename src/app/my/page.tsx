@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import BuiltBy from "@/components/BuiltBy";
 import AccessGate from "@/components/AccessGate";
-import { listMyPermits, PermitRecord, PermitStatus, ChainStage } from "@/lib/permits";
+import { listMyPermits, deletePermit, PermitRecord, PermitStatus, ChainStage } from "@/lib/permits";
+import { tsToStr, tsToDateOnly } from "@/lib/dateFmt";
 
 const STATUS_LABEL: Record<PermitStatus, { text: string; color: string }> = {
   draft:     { text: "임시저장", color: "#94a3b8" },
@@ -51,13 +52,6 @@ function ProgressChain({ stage, status }: { stage?: ChainStage; status: PermitSt
   );
 }
 
-function tsToStr(ts: unknown): string {
-  if (!ts) return "-";
-  const d = (ts as { toDate?: () => Date }).toDate?.() ?? new Date(ts as string);
-  return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })
-    + " " + d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
-}
-
 export default function MyPage() {
   return <AccessGate><MyDashboard /></AccessGate>;
 }
@@ -68,6 +62,14 @@ function MyDashboard() {
   const [permits, setPermits] = useState<PermitRecord[]>([]);
   const [fetching, setFetching] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [permitBusyId, setPermitBusyId] = useState("");
+
+  // 조회 날짜 범위 — 제출일시/작업일자 각각 독립 지정, 관리자 화면과 동일한 방식.
+  const [subFrom, setSubFrom] = useState("");
+  const [subTo, setSubTo] = useState("");
+  const [wdFrom, setWdFrom] = useState("");
+  const [wdTo, setWdTo] = useState("");
+  const resetDateFilters = () => { setSubFrom(""); setSubTo(""); setWdFrom(""); setWdTo(""); };
 
   // 게스트 전용. 미로그인→로그인, 관리자→관리자 화면, 담당자/공장장→관리자 결재함.
   useEffect(() => {
@@ -77,22 +79,45 @@ function MyDashboard() {
     else if (user.role === "manager") router.replace("/manager");
   }, [user, loading, router]);
 
-  useEffect(() => {
+  const fetchMine = async () => {
     if (user?.role !== "guest") return;
-    (async () => {
-      setFetching(true);
-      setLoadError(false);
-      try { setPermits(await listMyPermits(user.uid)); }
-      catch (e) { console.error("내 허가서 조회 실패:", e); setLoadError(true); }
-      setFetching(false);
-    })();
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+    setFetching(true);
+    setLoadError(false);
+    try { setPermits(await listMyPermits(user.uid)); }
+    catch (e) { console.error("내 허가서 조회 실패:", e); setLoadError(true); }
+    setFetching(false);
+  };
+  useEffect(() => { fetchMine(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const removePermit = async (p: PermitRecord) => {
+    if (!window.confirm(`"${p.data.workContent || "-"}" 허가서를 완전히 삭제할까요?\n삭제 후 되돌릴 수 없습니다.`)) return;
+    setPermitBusyId(p.id);
+    try { await deletePermit(p.id); await fetchMine(); }
+    catch (e) { alert("삭제 실패: " + ((e as Error)?.message ?? String(e))); }
+    finally { setPermitBusyId(""); }
+  };
 
   if (loading || !user || user.role !== "guest") {
     return <div className="loading"><span className="spinner" />불러오는 중…</div>;
   }
 
   const rejected = permits.filter((p) => p.status === "rejected").length;
+
+  const filtered = permits.filter((p) => {
+    if (subFrom || subTo) {
+      const sd = tsToDateOnly(p.submittedAt);
+      if (!sd) return false;
+      if (subFrom && sd < subFrom) return false;
+      if (subTo && sd > subTo) return false;
+    }
+    if (wdFrom || wdTo) {
+      const wd = p.data.workDate || "";
+      if (!wd) return false;
+      if (wdFrom && wd < wdFrom) return false;
+      if (wdTo && wd > wdTo) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="layout">
@@ -112,10 +137,25 @@ function MyDashboard() {
           {!fetching && !loadError && permits.length > 0 && (
             <span className="sub">총 {permits.length}건</span>
           )}
-          <button className="mini" onClick={() => location.reload()} disabled={fetching}>↻ 새로고침</button>
+          <button className="mini" onClick={fetchMine} disabled={fetching}>↻ 새로고침</button>
           <div className="grow" />
           <button className="mini btn-accent" onClick={() => window.location.assign("/fill")}>+ 새 허가서 작성</button>
         </div>
+
+        {!fetching && !loadError && permits.length > 0 && (
+          <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "#475569" }}>제출일시</span>
+            <input type="date" className="inp" style={{ width: 130 }} value={subFrom} onChange={(e) => setSubFrom(e.target.value)} />
+            <span style={{ color: "#94a3b8" }}>~</span>
+            <input type="date" className="inp" style={{ width: 130 }} value={subTo} onChange={(e) => setSubTo(e.target.value)} />
+            <span style={{ fontSize: 13, color: "#475569", marginLeft: 12 }}>작업일자</span>
+            <input type="date" className="inp" style={{ width: 130 }} value={wdFrom} onChange={(e) => setWdFrom(e.target.value)} />
+            <span style={{ color: "#94a3b8" }}>~</span>
+            <input type="date" className="inp" style={{ width: 130 }} value={wdTo} onChange={(e) => setWdTo(e.target.value)} />
+            <button className="mini" onClick={resetDateFilters}>초기화</button>
+            <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>{filtered.length}건</span>
+          </div>
+        )}
 
         {rejected > 0 && (
           <div className="no-print note note-warn" style={{ marginBottom: 12 }}>
@@ -140,6 +180,8 @@ function MyDashboard() {
             <div className="t">아직 작성한 허가서가 없습니다.</div>
             <button className="mini btn-accent" onClick={() => window.location.assign("/fill")}>+ 첫 허가서 작성하기</button>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="empty-rich"><div className="t">조건에 맞는 허가서가 없습니다.</div></div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table className="adm-table">
@@ -149,11 +191,11 @@ function MyDashboard() {
                   <th>작업내용</th>
                   <th style={{ width: 190 }}>상태</th>
                   <th style={{ width: 120 }}>최종수정</th>
-                  <th style={{ width: 90 }}></th>
+                  <th style={{ width: 150 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {permits.map((p) => {
+                {filtered.map((p) => {
                   const st = STATUS_LABEL[p.status];
                   const editable = p.status === "draft" || p.status === "rejected";
                   return (
@@ -171,9 +213,12 @@ function MyDashboard() {
                       </td>
                       <td data-label="최종수정" style={{ fontSize: 12, color: "#64748b" }}>{tsToStr(p.updatedAt)}</td>
                       <td className="act">
-                        <button className="mini" onClick={() => router.push(`/fill?id=${p.id}`)}>
-                          {editable ? "수정" : "보기"}
-                        </button>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          <button className="mini" onClick={() => router.push(`/fill?id=${p.id}`)}>
+                            {editable ? "수정" : "보기"}
+                          </button>
+                          <button className="mini danger" disabled={permitBusyId === p.id} onClick={() => removePermit(p)}>삭제</button>
+                        </div>
                       </td>
                     </tr>
                   );
